@@ -1,0 +1,811 @@
+# ---------------------------------------------------------------------------
+# autojob search configuration (tracked in git — keep personal data in profile/)
+# ---------------------------------------------------------------------------
+
+profile:
+  location: "Vancouver, BC"          # used by location-aware sources
+  country: CA
+  timezone: America/Vancouver
+  dashboard_url: "http://YOUR_TAILSCALE_IP:3100/pipeline/jobs"   # linked from the Telegram digest
+
+# Keyword queries used by every keyword-capable source (Adzuna, Jooble, LinkedIn/Indeed,
+# Remotive, Himalayas, Job Bank, Serper). Keep them short: boards do fuzzy matching.
+# ORDER MATTERS: sources with quotas take the first N — LinkedIn/Indeed 20, Job Bank 8, Jooble 6, Eluta 6,
+# Serper its own list below. Reordered 2026-09-02 by volume-to-fit ratio.
+queries:
+  - operations specialist
+  - operations analyst
+  - business operations
+  - revenue operations
+  - operations coordinator
+  - implementation specialist
+  - business analyst              # high volume, ~half finance/enterprise IT — expect rejections
+  - sales operations
+  - operations associate
+  - customer operations
+  # 11+ : reach the uncapped sources (Adzuna, Himalayas, Remotive) and LinkedIn/Indeed up to 20
+  - strategy and operations
+  - operations manager
+  - technical operations
+  - business systems analyst
+  - operations generalist
+  - onboarding specialist
+  - technical account manager
+  - partner operations
+  - program coordinator
+  - project coordinator           # heavily construction in Vancouver; see title exclusions (site, trades, civil)
+  - data operations
+  - process improvement
+  - solutions consultant
+  - go-to-market operations
+  - growth operations
+  - chief of staff
+  # Dropped 2026-09-02: "workflow automation" (a skill, not a title — kept in the career-page title filters),
+  # "automation specialist" (in the Lower Mainland this is PLC / controls / building automation work).
+
+scoring:
+  min_score_to_queue: 6        # jobs at/above this become "queued" for your review
+  auto_docs_min_score: 8       # resume + cover letter generated automatically at/above this; others on demand
+  max_llm_calls_per_run: 400   # hard safety cap
+  max_scrapes_per_run: 150     # descriptions fetched from job pages per run (each ~1.5 s)
+  # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
+  models:
+    - { name: minimax/minimax-m2.7:free,              rpm: 20 }  # scorer: fast (~13s), valid JSON, 82.9% instr-following
+    - { name: nvidia/nemotron-3-super-120b-a12b:free,  rpm: 20 }  # scorer: 5/5 schema conformance, 100% data extraction
+    - { name: z-ai/glm-5.2:free,                       rpm: 20 }  # smartest open model; free pool crowded at peak hours
+    - { name: openrouter/free,                         rpm: 20 }  # auto-router backstop: wherever free capacity exists
+  docs_models:
+    - { name: minimax/minimax-m3:free,                 rpm: 20 }  # docs: LMArena 1445, flagship writing
+    - { name: z-ai/glm-5.2:free,                       rpm: 20 }  # docs: highest intelligence, strong prose
+    - { name: openrouter/free,                         rpm: 20 }  # backstop
+
+# Shortlisted jobs you have not acted on are retired automatically (status "expired") when they are
+# too old to still be open, or when their page says the posting is gone. Runs at the start of each run
+# and via `autojob expire`.
+expiry:
+  posted_max_days: 30          # posting date known (most sources) → expire after this many days
+  fetched_max_days: 45         # no posting date → count from the day autojob first saw it
+  link_checks_per_run: 60      # active postings whose page is fetched per run (404 / "no longer accepting")
+
+# Cheap rule-based rejection BEFORE any LLM call. High precision only — the LLM handles nuance.
+prefilter:
+  # Titles containing one of these are never dropped by the title rules below ("chief" and "staff" are
+  # exclusion words, yet "Chief of Staff" is a target role — every such posting was being thrown away).
+  title_allow_phrases:
+    - chief of staff
+  title_exclude_words:            # whole-word match, case-insensitive
+    - senior
+    - sr
+    - snr
+    - lead
+    - principal
+    - staff
+    - director
+    - vp
+    - president
+    - head
+    - chief
+    - executive
+    - intern
+    - internship
+    - co-op
+    - coop
+    - nurse
+    - rn
+    - lpn
+    - driver
+    - warehouse
+    - forklift
+    - technician
+    - mechanic
+    - electrician
+    - welder
+    - cook
+    - chef
+    - dishwasher
+    - barista
+    - cashier
+    - janitor
+    - cleaner
+    - security
+    - labourer
+    - laborer
+    - pharmacist
+    - dentist
+    - physician
+    - therapist
+    - teacher
+    - tutor
+    - attorney
+    - lawyer
+    - paralegal
+    - accountant
+    - bookkeeper
+    - controller
+    - architect
+    - scientist
+    - researcher
+    - developer
+    - devops
+    - sre
+    - "front-end"
+    - frontend
+    - backend
+    - "full-stack"
+    - fullstack
+    - ios
+    - android
+    - designer
+    - copywriter
+    - nanny
+    - caregiver
+    - veterinary
+    - realtor
+    - broker
+    - insurance
+    - underwriter
+    - recruiter
+    - recruitment
+    - recruiting
+    - "talent acquisition"
+    - superintendent
+    - supervisor
+    - clerk
+    - receptionist
+    - estimator
+    - foreman
+    - dispatcher
+    - millwright
+    - apprentice
+    - buyer
+    - merchandiser
+    - planner
+    - scheduler
+    - inspector
+    - auditor
+    - counsel
+    - physiotherapist
+    - optometrist
+    - librarian
+    # added 2026-09-02 after reviewing what still reached the LLM and scored 1–2
+    - representative
+    - rep
+    - reps
+    - handyman
+    - roofer
+    - roofers
+    - labourers
+    - laborers
+    - painter
+    - carpenter
+    - plumber
+    - machinist
+    - assembler
+    - operator
+    - shipper
+    - receiver
+    - picker
+    - packer
+    - courier
+    - pilot
+    - instructor
+    - professor
+    - lecturer
+    - faculty
+    - postdoc
+    - phd
+    - trainee
+    - stagiaire
+    - alternance
+    - coach
+    - trainer
+    - talent
+    - benefits
+    - collections
+    - tax
+    - fundraising
+    - quality
+    - qualité
+    - cybersecurity
+    - salesforce
+    - servicenow
+    - netsuite
+    - directeur
+    - directrice
+    - producer
+    - aviation
+    - airport
+    - marine
+    - mining
+    - refinery
+    - custodian
+    - custodial
+    - janitorial
+    - landscaper
+    - concierge
+    - bartender
+    - server
+    - housekeeper
+    - kitchen
+    - butcher
+    - baker
+    - florist
+    - stylist
+    - esthetician
+    - pharmacy
+    - veterinarian
+    - counsellor
+    - counselor
+    - chaplain
+    - pastor
+    - volunteer
+    # BC-specific noise around "project coordinator" / "automation" (added 2026-09-02)
+    - plc
+    - controls
+    - site
+    - trades
+    - civil
+    - nursing
+  title_exclude_phrases:          # substring match, case-insensitive
+    - software engineer
+    - software developer
+    - data scientist
+    - machine learning
+    - ml engineer
+    - site reliability
+    - customer service representative
+    - call center
+    - call centre
+    - retail
+    - sales associate
+    - account executive
+    - business development representative
+    - sales development representative
+    - real estate
+    - property manager
+    - construction
+    - hvac
+    - plumbing
+    - truck
+    - delivery driver
+    - store manager
+    - restaurant
+    - hotel
+    - housekeep
+    - clinic
+    - dental
+    - medical office
+    - early childhood
+    - social worker
+    - qa/qc
+    - quality control
+    - quality assurance
+    - health and safety
+    - occupational health
+    - payroll
+    - accounts payable
+    - accounts receivable
+    - executive assistant
+    - administrative assistant
+    - office assistant
+    - legal assistant
+    # added 2026-09-02
+    - part-time
+    - part time
+    - seasonal
+    - temporary
+    - "(term)"
+    - term position
+    - casual
+    - on-call
+    - key holder
+    - team member
+    - front desk
+    - people operations
+    - people ops
+    - human resources
+    - "hr "
+    - hr operations
+    - hr generalist
+    - talent operations
+    - data partner
+    - general interest
+    - general application
+    - open application
+    - talent pool
+    - talent community
+    - future opportunities
+    - qa engineer
+    - test engineer
+    - systems administrator
+    - system administrator
+    - data engineer
+    - analytics engineer
+    - production coordinator
+    - support worker
+    - care aide
+    - research assistant
+    - lab technician
+    - laboratory
+    - clinical
+    - fraud
+    - investment
+    - wealth
+    - trading
+    - portfolio manager
+    - banking
+    - environmental
+    - building automation
+    - industrial automation
+    - process engineer
+    # not permanent (full-time permanent only, 2026-09-02)
+    - "(contract"
+    - "- contract"
+    - "– contract"
+    - contract position
+    - contract role
+    - contract-to-hire
+    - fixed-term
+    - fixed term
+    - month contract
+    - months contract
+    - month term
+    - maternity leave
+    - parental leave
+    - leave coverage
+    - leave replacement
+    - temp-to-perm
+  employment_type_exclude: [internship, intern, co-op, coop, volunteer, part-time, "part time", temporary, seasonal, casual,
+                            contract, contractor, freelance, fixed-term, "fixed term", temp]   # full-time permanent only
+  max_posted_age_days: 30         # a posting already older than this when first seen is not worth an LLM call
+                                  # (remote boards keep listings up for months; matches expiry.posted_max_days)
+  location:
+    # Rules, in order (see autojob/prefilter.py):
+    #  1. one of deny_cities, on-site (no "remote" wording), and not also naming the Vancouver area → drop
+    #     — even when the string also says "Canada" ("Toronto, Ontario, Canada" is Toronto).
+    #  2. US-only markers, US states or deny_us_cities without any Canadian place name → drop (remote too).
+    #  3. deny_countries without a Canadian/global keyword → drop ("Remote - EMEA").
+    # Empty locations always pass.
+    deny_cities:
+      - toronto
+      - montreal
+      - montréal
+      - calgary
+      - edmonton
+      - ottawa
+      - winnipeg
+      - halifax
+      - quebec city
+      - québec
+      - mississauga
+      - waterloo
+      - kitchener
+      - hamilton
+      - london, on
+      - victoria, bc
+      - kelowna
+      # Job Bank formats: "City (QC)"
+      - "(qc)"
+      - "(on)"
+      - "(ab)"
+      - "(mb)"
+      - "(sk)"
+      - "(ns)"
+      - "(nb)"
+      - "(nl)"
+      - "(pe)"
+      - "(yt)"
+      - "(nt)"
+      - "(nu)"
+    deny_us: true
+    deny_us_cities:              # whole-word match; only used when no Canadian place is named
+      - san francisco
+      - bay area
+      - new york
+      - nyc
+      - brooklyn
+      - los angeles
+      - chicago
+      - boston
+      - austin
+      - seattle
+      - denver
+      - atlanta
+      - miami
+      - houston
+      - dallas
+      - phoenix
+      - philadelphia
+      - san diego
+      - san jose
+      - minneapolis
+      - salt lake city
+      - nashville
+      - charlotte
+      - raleigh
+      - pittsburgh
+      - detroit
+      - las vegas
+      - sacramento
+      - indianapolis
+      - baltimore
+      - tampa
+      - orlando
+      - kansas city
+      - st. louis
+      - cincinnati
+      - cleveland
+      - milwaukee
+      - oakland
+      - palo alto
+      - mountain view
+      - menlo park
+      - sunnyvale
+      - redwood city
+      - santa monica
+      - irvine
+      - jersey city
+      - bellevue
+      - boulder
+      - ann arbor
+      - reno
+      - portland
+    deny_countries:              # regions/countries a "remote" job can be pinned to
+      - europe
+      - emea
+      - apac
+      - latam
+      - latin america
+      - asia
+      - africa
+      - middle east
+      - united kingdom
+      - uk
+      - ireland
+      - germany
+      - france
+      - spain
+      - portugal
+      - poland
+      - romania
+      - netherlands
+      - italy
+      - sweden
+      - denmark
+      - india
+      - singapore
+      - australia
+      - new zealand
+      - japan
+      - korea
+      - brazil
+      - mexico
+      - argentina
+      - colombia
+      - philippines
+      - israel
+      - uae
+      - dubai
+      - turkey
+      - egypt
+      - nigeria
+      - kenya
+      - south africa
+      - china
+      - hong kong
+      - taiwan
+      - vietnam
+      - indonesia
+      - pakistan
+      - bangladesh
+      - ukraine
+      - czech
+      - hungary
+      - austria
+      - switzerland
+      - belgium
+      - norway
+      - finland
+      - greece
+      - chile
+      - peru
+      - costa rica
+      - new delhi
+      - bangalore
+      - london
+      - paris
+      - berlin
+
+sources:
+  # ---- Aggregators / boards ------------------------------------------------
+  adzuna:                      # free key; best Canada-wide coverage
+    enabled: true
+    match: title               # title = query words must appear in the job title (6 results instead of 93 for
+                               # "operations coordinator", almost all relevant); any = anywhere in the posting
+    where: Vancouver
+    distance_km: 50
+    pages: 2
+    results_per_page: 50
+    max_days_old: 7
+  jooble:                      # free key, 500 requests total → few queries
+    enabled: true
+    location: "Vancouver, BC"
+    radius_km: 50
+    max_queries: 6
+  boards:                      # LinkedIn + Indeed via python-jobspy (no key)
+    enabled: true
+    sites: [linkedin, indeed]
+    location: "Vancouver, BC"
+    country_indeed: canada
+    results_per_query: 25
+    hours_old: 120            # 5 days: a posting missed one day (rate limit, cap) gets another chance
+    linkedin_fetch_description: true
+    max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in
+  jobbank:                     # Government of Canada Job Bank (HTML)
+    enabled: true
+    location: "Vancouver, BC"
+    max_queries: 8
+  serper:                      # Google via serper.dev — 2,500 free credits TOTAL, so budgeted
+    enabled: true
+    queries_per_run: 12        # ≈ 12 credits/day → ~7 months on the free tier
+    queries:                   # own short list: 8 queries × 8 plan steps = 64 searches ≈ 5-day rotation
+      - operations specialist
+      - operations analyst
+      - business operations
+      - revenue operations
+      - operations coordinator
+      - implementation specialist
+      - customer operations
+      - strategy and operations
+    results_per_query: 10        # free accounts reject num > 10
+    recency: qdr:w             # past week
+    # Rotating query plan: each run takes the next `queries_per_run` items, so coverage
+    # cycles through all of them over a few days.
+    # ATS domains are worldwide, so each search is scoped to Canada/Vancouver (unscoped, 98 of 99 results
+    # were US/India/China Workday postings that all scored 1–3).
+    plan:
+      - { suffix: "site:jobs.lever.co (Vancouver OR Canada)", queries: default }
+      - { suffix: "(site:boards.greenhouse.io OR site:job-boards.greenhouse.io) (Vancouver OR Canada)", queries: default }
+      - { suffix: "site:jobs.ashbyhq.com (Vancouver OR Canada)", queries: default }
+      - { suffix: "(site:apply.workable.com OR site:jobs.smartrecruiters.com) (Vancouver OR Canada)", queries: default }
+      - { suffix: "site:myworkdayjobs.com Vancouver", queries: default }
+      - { suffix: "site:wellfound.com/jobs (Vancouver OR Canada)", queries: default }
+      - { suffix: "Vancouver", queries: default }
+      - { suffix: "remote Canada", queries: default }
+
+  # ---- Remote-first boards (no key) ---------------------------------------
+  remotive:
+    enabled: true
+    limit_per_query: 20
+  remoteok:
+    enabled: true
+    tags: [operations, ops, support, success, project-management, management, business, analyst, non-tech]
+  jobicy:
+    enabled: true
+    geo: canada
+    tags: [business, project-management, admin, marketing]   # Jobicy "industry" slugs
+    count: 50
+  themuse:
+    enabled: true
+    categories: ["Business Operations", "Project Management", "Data and Analytics"]
+    locations: ["Vancouver, Canada", "Flexible / Remote"]
+    levels: [entry, mid]      # The Muse levels: internship, entry, mid, senior, management
+    pages: 3
+  weworkremotely:
+    enabled: true
+    feeds:
+      - remote-management-and-finance-jobs
+      - remote-product-jobs
+  himalayas:
+    enabled: true
+    countries: [CA]
+    worldwide: true
+    pages_per_query: 2
+    results_per_page: 20
+    skip_seniority: [Director, Executive, VP, C-Level]   # Himalayas' own label; "Senior" is left to the title rules
+
+  # ---- Vancouver employers on Workday (no key) ------------------------------
+  # Workday's public job-board API: POST …/wday/cxs/<tenant>/<site>/jobs. Big local employers (UBC, Aritzia…)
+  # live here and nowhere else. Find a tenant's site name in its careers URL:
+  # https://<tenant>.<wd>.myworkdayjobs.com/<site>/… ; test with `autojob sources test workday`.
+  workday:
+    enabled: true
+    queries: [operations, coordinator, analyst, associate, specialist, "business analyst", "project coordinator",
+              implementation, solutions, "customer success", partnerships, reporting]
+    pages_per_query: 2         # Workday returns 20 postings per page
+    max_details_per_run: 60    # full descriptions fetched per run (one request each; only for new, relevant postings)
+    title_keywords: [operations, " ops", "ops ", coordinator, analyst, associate, specialist, generalist,
+                     "chief of staff", "business analyst", "project", "program", enablement, automation, workflow,
+                     implementation, onboarding, strategy, administrator, "systems", "process", planning,
+                     solutions, success, partnerships, reporting]
+    tenants:
+      - { tenant: ubc, wd: wd10, site: ubcstaffjobs, name: "University of British Columbia" }
+      - { tenant: aritzia, wd: wd3, site: External, name: Aritzia }
+      - { tenant: stemcell, wd: wd3, site: External_Careers, name: "STEMCELL Technologies" }
+
+  # ---- Eluta.ca — Canadian aggregator, Vancouver radius (no key) ------------
+  # Job pages are bot-walled, so these are scored from the search snippet only (low confidence). Kept because it
+  # indexes employer career sites (health authorities, biotech, engineering firms) that the big boards miss.
+  eluta:
+    enabled: true
+    location: "Vancouver, BC"
+    max_queries: 6
+    pages: 1                   # 10 results per page
+
+  # ---- Company career pages via their ATS APIs (no key) --------------------
+  # Run `autojob companies verify` to check slugs, or `autojob companies probe <name>` to add.
+  ats_companies:
+    enabled: true
+    max_jobs_per_company: 15
+    # Phrase-level on purpose: bare words like "analyst" match half of a big company's board.
+    title_keywords: [operations, " ops", "ops ", bizops, revops, coordinator, "chief of staff",
+                     "business analyst", "strategy & ops", "strategy and ops", "strategy & operations",
+                     enablement, "implementation specialist", "onboarding specialist", automation,
+                     "program associate", "project associate", "workflow",
+                     # non-"operations" titles worth catching (added 2026-09-02)
+                     solutions, "technical account", "customer success", "data analyst", "systems analyst",
+                     partnerships, process, gtm, "go-to-market", reporting, revenue]
+    greenhouse:
+      - stripe
+      - airbnb
+      - hubspot
+      - instacart
+      - lyft
+      - klaviyo
+      - intercom
+      - twilio
+      - okta
+      - pagerduty
+      - datadog
+      - cloudflare
+      - fastly
+      - launchdarkly
+      - newrelic
+      - vercel
+      - netlify
+      - contentful
+      - algolia
+      - elastic
+      - circleci
+      - buildkite
+      - databricks
+      - amplitude
+      - asana
+      - smartsheet
+      - airtable
+      - postman
+      - figma
+      - affirm
+      - robinhood
+      - nubank
+      - brex
+      - mercury
+      - betterment
+      - gemini
+      - coinbase
+      - gusto
+      - pandadoc
+      - carta
+      - hootsuite
+      - geotab
+      - karbon
+      - dialpad
+      - vonage
+      - remote
+      - remotecom
+      - gitlab
+      - samsara
+      - flexport
+      - flyzipline
+      - shipbobinc
+      - checkr
+      - gongio
+      - salesloft
+      - apollo
+      - apolloio
+      - typeform
+      - surveymonkey
+      - qualtrics
+      - pendo
+      - sumologic
+      - beyondtrust
+      - lastpass
+      - pingidentity
+      - duolingo
+      - disney
+      - classpass
+      - kickstarter
+      - eventbriteinc
+      - squarespace
+      - webflow
+      - overstory
+      - ridgeline
+      - nansen
+      - speechify
+      - kaizengaming
+      - zerocater
+      - spothero
+      - pathai
+      - mewssystems
+      - figure
+      - vast
+      - fundraiseup
+      - eleoshealth
+      - trace3
+      - plootocareers
+      - nscaleoperationsukltd
+      - astspacemobile
+      - ultragenyxpharmaceutical
+      - carGurus
+      - connectwise
+      - grafanalabs
+      - honeycomb
+      - tempo
+      - toast
+      - block
+      - khanacademy
+      - coursera
+      - udemy
+      - udacity
+      - lucidmotors
+      - bird
+      - spin
+      - didi
+      - later
+      - stackadapt
+      - quadbridge
+      - lush
+    lever:
+      - fullscript
+      - zensurance
+      - policyme
+      - versapay
+      - waveapps
+      - docebo
+      - pointclickcare
+      - cority
+      - wattpad
+      - quandri
+      - applydigital
+      - kabam
+      - arcteryx.com
+      - toptal
+      - metabase
+      - veeva
+      - outreach
+      - articulate
+      - palantir
+      - aircall
+      - alloy
+      - flatfile
+    ashby:
+      - notion
+      - ramp
+      - hiive
+      - trulioo
+      - ashby
+      - linear
+      - deel
+      - openai
+      - vercel
+      - supabase
+      - posthog
+      - clerk
+      - cohere
+      - wealthsimple
+      - 1password
+      - jane
+      - klue
+      - thinkific
+      - float
+      - koho
+      - lightspeed
+      - hopper
+
+  yc:                          # Y Combinator "hiring" companies → their ATS boards
+    enabled: true
+    max_new_probes_per_run: 100    # companies whose ATS we look up per run (results cached 30 days)
+    title_keywords: [operations, " ops", "ops ", bizops, revops, coordinator, "chief of staff",
+                     "business analyst", "strategy & ops", "strategy and ops", enablement, automation, workflow,
+                     solutions, "technical account", "customer success", "data analyst", "systems analyst",
+                     partnerships, process, gtm, "go-to-market", reporting, revenue]

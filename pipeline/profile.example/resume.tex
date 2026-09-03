@@ -1,0 +1,36 @@
+% Minimal one-page resume template. Replace with your own LaTeX resume — the model edits
+% bullets/summary but never the preamble, so any well-formed one-page resume works.
+\documentclass[letterpaper,11pt]{article}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\addtolength{\oddsidemargin}{-0.5in}\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.7in}\addtolength{\textheight}{1.3in}
+\titleformat{\section}{\scshape\large\raggedright}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{3pt}{2pt}
+\setlength{\parindent}{0pt}
+\begin{document}
+\begin{center}{\Huge \scshape Jane Example}\\ jane@example.com $|$ Vancouver, BC $|$ linkedin.com/in/janeexample\end{center}
+\section*{Summary}
+Operations coordinator with two years of experience running dispatch operations and automating manual work with Zapier, Airtable and Google Sheets.
+\section*{Skills}
+\begin{itemize}[leftmargin=*, itemsep=0pt]
+  \item \textbf{Operations \& Automation:} Zapier, Make, Airtable, process mapping
+  \item \textbf{Data:} SQL (basic), Google Sheets (advanced), Looker Studio
+\end{itemize}
+\section*{Work Experience}
+\textbf{Operations Coordinator} — Acme Logistics, Vancouver, BC \hfill 2023 -- present
+\begin{itemize}[leftmargin=0.2in, itemsep=1pt]
+  \item Owned daily dispatch operations for a 40-driver fleet; built Google Sheets and Looker dashboards.
+  \item Automated onboarding with Zapier and Airtable, saving about 6 hours per week.
+\end{itemize}
+\textbf{Operations Intern} — Beta SaaS, Remote \hfill Summer 2022
+\begin{itemize}[leftmargin=0.2in, itemsep=1pt]
+  \item Cleaned CRM data, documented processes, ran weekly KPI reports.
+\end{itemize}
+\section*{Education}
+\textbf{BCom, Operations Management} — University of Example \hfill 2019 -- 2023
+\end{document}

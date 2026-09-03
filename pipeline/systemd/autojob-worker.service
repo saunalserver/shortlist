@@ -1,0 +1,15 @@
+[Unit]
+Description=autojob dashboard command worker (run / generate docs on request)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Autojob-search
+ExecStart=%h/projects/Autojob-search/venv/bin/autojob worker
+Restart=always
+RestartSec=10
+TimeoutStopSec=240
+Nice=10
+
+[Install]
+WantedBy=default.target

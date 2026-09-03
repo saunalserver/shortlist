@@ -1,0 +1,36 @@
+% Cover letter template. The model fills the {{PLACEHOLDERS}}; everything else is yours.
+% Available: {{DATE}} {{ROLE}} {{COMPANY}} {{OPENING}} {{BODY}} {{BULLETS}} {{GAP}} {{CLOSING}}
+\documentclass[11pt]{article}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{parskip}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\setlength{\parindent}{0pt}
+\begin{document}
+\begin{center}
+    {\LARGE \textbf{Jane Example}}\\[2pt]
+    jane@example.com $|$ Vancouver, BC $|$ linkedin.com/in/janeexample
+\end{center}
+\vspace{0.6em}
+{{DATE}}
+
+\textbf{Re: {{ROLE}} -- {{COMPANY}}}
+
+Dear Hiring Team,
+
+{{OPENING}}
+
+{{BODY}}
+
+\textbf{What I bring to this role:}
+{{BULLETS}}
+
+{{GAP}}
+
+{{CLOSING}}
+
+Sincerely,\\
+\textbf{Jane Example}
+\end{document}

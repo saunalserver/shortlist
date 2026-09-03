@@ -1,0 +1,11 @@
+# Runtime dependencies (mirror of pyproject.toml). Install with: pip install -r requirements.txt -e .
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5
+python-dotenv>=1.0
+pyyaml>=6
+openai>=1.40
+python-jobspy>=1.1.80
+# dev
+pytest>=8
+ruff>=0.5

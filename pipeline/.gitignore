@@ -1,0 +1,24 @@
+# secrets & personal data
+.env
+.env.*
+!.env.example
+profile/
+# runtime data
+data/
+output/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.log.*
+*.lock
+# python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
