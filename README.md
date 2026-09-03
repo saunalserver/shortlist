@@ -6,13 +6,17 @@ Every morning at 07:00 the pipeline pulls postings from ~15 sources (job boards,
 
 **Why "Shortlist"?** Fifteen sources in, one ranked shortlist out — the whole product is the list you actually review.
 
-## Screenshots
+## The pipeline in action
 
-| Review queue | Pipeline health |
+| **① Found** — 15 sources → dedupe → prefilter | **② Matched** — scored 1–10 against the profile |
 |---|---|
-| ![Review queue](docs/img/review.png) | ![Pipeline runs](docs/img/pipeline.png) |
+| ![A pipeline run in the terminal: fetch, dedupe, prefilter, then per-job scores](docs/img/found.png) | ![Job detail: fit reasoning, strengths and gaps against the candidate profile](docs/img/match.png) |
+| **③ Digest** — one Telegram message per run | **④ Review** — apply / dismiss in the dashboard |
+| ![Telegram digest with the day's shortlist](docs/img/digest.png) | ![Review queue with scores, sources and statuses](docs/img/review.png) |
+| **⑤ Track** — applications through to offers | |
+| ![Kanban board from bookmarked to offer](docs/img/track.png) | |
 
-![Application tracker](docs/img/kanban.png)
+*All screenshots use generic demo data — no real postings, companies or personal info.*
 
 ## How it works
 
