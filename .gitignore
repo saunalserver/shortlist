@@ -1,0 +1,33 @@
+# --- pipeline (python) ---
+.env
+.env.*
+!.env.example
+profile/
+data/
+output/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.log.*
+*.lock
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+# --- dashboard (node) ---
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/*.tsbuildinfo
+dashboard/next-env.d.ts
+dashboard/.env*
+!dashboard/.env.example
+dashboard/data/
+.DS_Store
+npm-debug.log*
