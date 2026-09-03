@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import time
 from typing import Any
 
@@ -82,7 +83,7 @@ def send_digest(settings: Settings, run: dict[str, Any], queued: list[dict[str, 
             lines.append("")
         if len(queued) > TOP_N:
             lines.append(f"…and {len(queued) - TOP_N} more in the dashboard.")
-    dash = settings.get("profile.dashboard_url")
+    dash = os.getenv("DASHBOARD_URL") or settings.get("profile.dashboard_url")
     if dash:
         lines.append(f"\n<a href=\"{_e(dash)}\">Open the review queue</a>")
     _send(settings, "\n".join(lines))

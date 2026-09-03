@@ -6,7 +6,7 @@ profile:
   location: "Vancouver, BC"          # used by location-aware sources
   country: CA
   timezone: America/Vancouver
-  dashboard_url: "http://YOUR_TAILSCALE_IP:3100/pipeline/jobs"   # linked from the Telegram digest
+  dashboard_url: "http://localhost:3100/pipeline/jobs"      # digest link; set DASHBOARD_URL in .env for other devices
 
 # Keyword queries used by every keyword-capable source (Adzuna, Jooble, LinkedIn/Indeed,
 # Remotive, Himalayas, Job Bank, Serper). Keep them short: boards do fuzzy matching.
