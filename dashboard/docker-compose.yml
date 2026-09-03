@@ -1,0 +1,15 @@
+services:
+  jobsearch:
+    build: .
+    ports:
+      - "3100:3000"
+    volumes:
+      - ./data:/app/data
+      # The Python pipeline repo: database (data/), generated PDFs (output/), config and logs are read here.
+      - ../pipeline:/app/autojob-source
+    environment:
+      - DATABASE_PATH=/app/data/jobsearch.db
+      - AUTOJOB_DB_PATH=/app/autojob-source/data/autojob.db
+      - AUTOJOB_PROJECT_ROOT=/app/autojob-source
+    user: "1000:1000"
+    restart: unless-stopped

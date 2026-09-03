@@ -1,0 +1,16 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+# runtime data (SQLite tracker DB, reminder state)
+data/
+# env
+.env*
+!.env.example
+# misc
+.DS_Store
+npm-debug.log*
+.playwright-mcp/
+.superpowers/
