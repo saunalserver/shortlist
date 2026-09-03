@@ -31,3 +31,8 @@ dashboard/.env*
 dashboard/data/
 .DS_Store
 npm-debug.log*
+
+# --- demo screenshot tooling (regenerable artifacts excluded) ---
+.untether-outbox/
+demo/dashboard-data/
+demo/tex/*.pdf

@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0e1621; font-family:-apple-system,'Segoe UI',system-ui,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.phone { width:560px; height:860px; background:#17212b; border-radius:24px; box-shadow:0 24px 80px rgba(0,0,0,.55); overflow:hidden; display:flex; flex-direction:column; }
+.top { background:#17212b; padding:16px 18px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #101921; }
+.avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,#e8a317,#f3c969); display:flex; align-items:center; justify-content:center; font-size:20px; }
+.name { color:#ffffff; font-weight:600; font-size:16px; }
+.sub { color:#6ab3f3; font-size:12.5px; margin-top:1px; }
+.chat { flex:1; background:radial-gradient(ellipse at 30% 10%, #1d2b3a 0%, #17212b 60%); padding:18px 16px; overflow:hidden; }
+.meta { text-align:center; color:#6d7f95; font-size:12px; margin-bottom:14px; }
+.bubble { background:#2b5278; border-radius:14px 14px 14px 4px; padding:12px 14px; max-width:92%; margin-left:0; color:#ffffff; font-size:14.5px; line-height:1.5; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.bubble b { color:#fff; }
+.bubble .link { color:#6ab3f3; text-decoration:none; }
+.bubble .score { font-weight:700; }
+.fire { } .check { }
+.job { margin:10px 0 2px 0; }
+.jobsub { color:#a8c8ec; font-size:13.5px; margin:2px 0 0 4px; }
+.jobsub i { color:#7d97b5; }
+.why { color:#cfe0f5; font-size:13px; margin:3px 0 0 4px; }
+.more { color:#a8c8ec; font-size:13.5px; margin-top:10px; }
+.bottomlink { margin-top:12px; }
+.time { display:block; text-align:right; color:#a8c8e8; font-size:11px; margin-top:8px; opacity:.8; }
+.inputbar { background:#17212b; padding:12px 16px 18px; border-top:1px solid #101921; color:#6d7f95; font-size:14px; border-radius:0 0 24px 24px; }
+.pill { background:#242f3d; border-radius:20px; padding:10px 16px; display:inline-block; width:100%; }
+</style></head><body>
+<div class="phone">
+  <div class="top">
+    <div class="avatar">🗂</div>
+    <div><div class="name">Autojob</div><div class="sub">bot</div></div>
+  </div>
+  <div class="chat">
+    <div class="meta">September 3</div>
+    <div class="bubble">
+      <b>Autojob — 2026-09-03</b><br>
+      612 fetched · 89 new · 61 filtered · 28 scored → <b>8 worth a look</b> · 3 old postings retired
+      <div class="job"><span class="fire">🔥</span> <span class="score">9/10</span> · <b>Revenue Operations Analyst</b></div>
+      <div class="jobsub">Northwind Traders · Vancouver, BC (Hybrid) · <i>greenhouse</i></div>
+      <div class="why">Almost exact overlap with the profile: revenue/reporting automation in Python + SQL, CRM hygiene ownership…</div>
+      <div class="job"><span class="fire">🔥</span> <span class="score">8/10</span> · <b>Business Systems Analyst</b> 📄</div>
+      <div class="jobsub">Contoso · Remote (Canada) · <i>workday</i></div>
+      <div class="job"><span class="fire">🔥</span> <span class="score">8/10</span> · <b>GTM Operations Manager</b></div>
+      <div class="jobsub">Fabrikam · Vancouver, BC · <i>lever</i></div>
+      <div class="job"><span class="check">✅</span> <span class="score">7/10</span> · <b>Partner Operations Analyst</b></div>
+      <div class="jobsub">Adventure Works · Toronto, ON (Remote) · <i>adzuna</i></div>
+      <div class="job"><span class="check">✅</span> <span class="score">7/10</span> · <b>Data Operations Specialist</b></div>
+      <div class="jobsub">Fourth Coffee · Vancouver, BC · <i>greenhouse</i></div>
+      <div class="more">…and 3 more in the dashboard.</div>
+      <div class="bottomlink"><a class="link" href="#">Open the review queue</a></div>
+      <span class="time">07:06</span>
+    </div>
+  </div>
+  <div class="inputbar"><span class="pill">Message</span></div>
+</div>
+</body></html>

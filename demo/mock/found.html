@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d1117; font-family:'SF Mono',Menlo,Consolas,monospace; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.term { width:1320px; background:#0a0e14; border-radius:12px; box-shadow:0 24px 80px rgba(0,0,0,.55); overflow:hidden; }
+.bar { display:flex; gap:8px; align-items:center; padding:12px 16px; background:#161b22; border-bottom:1px solid #21262d; }
+.dot { width:12px; height:12px; border-radius:50%; }
+.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+.bar span { margin-left:12px; color:#8b949e; font-size:13px; font-family:-apple-system,system-ui,sans-serif; }
+.body { padding:20px 24px 26px; font-size:14.5px; line-height:1.62; color:#c9d1d9; white-space:pre-wrap; }
+.p { color:#3fb950; } .cmd { color:#e6edf3; }
+.l { color:#8b949e; }
+.hi { color:#e3b341; font-weight:600; }
+.skip { color:#f85149; }
+.dim { color:#6e7681; }
+</style></head><body>
+<div class="term">
+  <div class="bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span>autojob@homelab: ~</span></div>
+  <div class="body"><span class="p">autojob@homelab</span>:<span class="cmd">~$ autojob run</span>
+
+<span class="dim">2026-09-03 07:00:02</span> <span class="hi">[INFO]</span> === autojob run 48 starting ===
+<span class="dim">2026-09-03 07:00:03</span> <span class="hi">[INFO]</span> [greenhouse] 118 jobs in 4s
+<span class="dim">2026-09-03 07:00:08</span> <span class="hi">[INFO]</span> [workday] 96 jobs in 7s
+<span class="dim">2026-09-03 07:00:11</span> <span class="hi">[INFO]</span> [lever] 74 jobs in 4s
+<span class="dim">2026-09-03 07:00:14</span> <span class="hi">[INFO]</span> [adzuna] 87 jobs in 5s
+<span class="dim">2026-09-03 07:00:20</span> <span class="hi">[INFO]</span> [jooble] 112 jobs in 7s
+<span class="dim">2026-09-03 07:00:26</span> <span class="hi">[INFO]</span> [serper] 65 jobs in 8s
+<span class="dim">2026-09-03 07:00:30</span> <span class="hi">[INFO]</span> [eluta] 58 jobs in 5s
+<span class="dim">2026-09-03 07:00:32</span> <span class="hi">[INFO]</span> [jobbank] 41 jobs in 3s
+<span class="dim">2026-09-03 07:00:33</span> <span class="hi">[INFO]</span> inserted 89 new jobs (497 already seen, 26 duplicate title+company)
+<span class="dim">2026-09-03 07:00:39</span> <span class="hi">[INFO]</span> prefilter: 61 dropped, 28 kept for scoring
+<span class="dim">2026-09-03 07:00:40</span> <span class="hi">[INFO]</span> scraping descriptions for 18/28 jobs (budget 25)
+<span class="dim">2026-09-03 07:02:31</span> <span class="hi">[INFO]</span> scraped 17 descriptions
+<span class="dim">2026-09-03 07:03:58</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">9/10</b>      Revenue Operations Analyst — Northwind Traders [greenhouse]
+<span class="dim">2026-09-03 07:04:12</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">8/10</b>      Business Systems Analyst — Contoso [workday]
+<span class="dim">2026-09-03 07:04:26</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">8/10</b>      GTM Operations Manager — Fabrikam [lever]
+<span class="dim">2026-09-03 07:04:41</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">7/10</b>      Partner Operations Analyst — Adventure Works [adzuna]
+<span class="dim">2026-09-03 07:04:55</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">7/10</b>      Data Operations Specialist — Fourth Coffee [greenhouse]
+<span class="dim">2026-09-03 07:05:09</span> <span class="hi">[INFO]</span> scored <b style="color:#3fb950">6/10</b>      Sales Operations Analyst — Wingtip Toys [eluta]
+<span class="dim">2026-09-03 07:05:24</span> <span class="hi">[INFO]</span> scored <span class="skip">5/10 SKIP</span>  Sales Development Rep — Coho Vineyards [jooble]
+<span class="dim">2026-09-03 07:05:38</span> <span class="hi">[INFO]</span> scored <span class="skip">3/10 SKIP</span>  Insurance Sales Representative — Fabrikam [adzuna]
+<span class="dim">2026-09-03 07:05:52</span> <span class="hi">[INFO]</span> scoring: 8 queued, 18 skipped, 0 errors (31 LLM calls)
+<span class="dim">2026-09-03 07:05:53</span> <span class="hi">[INFO]</span> digest sent
+<span class="dim">2026-09-03 07:11:48</span> <span class="hi">[INFO]</span> === run 48 done in 12 min: 612 fetched, 89 new, 61 prefiltered, 28 scored, 8 queued, 2 docs, 0 errors ===
+<span class="p">autojob@homelab</span>:<span class="cmd">~$ </span><span style="opacity:.85">▊</span></div>
+</div>
+</body></html>

@@ -13,10 +13,10 @@ Every morning at 07:00 the pipeline pulls postings from ~15 sources (job boards,
 | ![A pipeline run in the terminal: fetch, dedupe, prefilter, then per-job scores](docs/img/found.png) | ![Job detail: fit reasoning, strengths and gaps against the candidate profile](docs/img/match.png) |
 | **③ Digest** — one Telegram message per run | **④ Review** — apply / dismiss in the dashboard |
 | ![Telegram digest with the day's shortlist](docs/img/digest.png) | ![Review queue with scores, sources and statuses](docs/img/review.png) |
-| **⑤ Track** — applications through to offers | |
-| ![Kanban board from bookmarked to offer](docs/img/track.png) | |
+| **⑤ Docs** — tailored resume + cover letter | **⑥ Track** — applications through to offers |
+| ![A tailored resume PDF generated for one role](docs/img/docs.png) | ![Kanban board from bookmarked to offer](docs/img/track.png) |
 
-*All screenshots use generic demo data — no real postings, companies or personal info.*
+*All screenshots use generic demo data — fictional companies (Northwind Traders, Contoso, Fabrikam…), a demo database and a placeholder candidate.*
 
 ## How it works
 

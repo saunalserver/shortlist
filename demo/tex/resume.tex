@@ -1,0 +1,59 @@
+% Generic demo resume — all names/companies fictional
+\documentclass[letterpaper,11pt]{article}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{tabularx}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\pagestyle{empty}
+\urlstyle{same}
+\setlength{\tabcolsep}{0in}
+\titleformat{\section}{\scshape\large\raggedright}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{10pt}{6pt}
+\setlength{\parindent}{0pt}
+\newcommand{\resumeItem}[1]{\item\small{#1}}
+\newcommand{\resumeSubheading}[4]{
+\item
+\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+\textbf{#1} & #2 \\
+\textit{\small#3} & \textit{\small #4} \\
+\end{tabular*}\vspace{-4pt}}
+\begin{document}
+
+\begin{center}
+{\LARGE \textbf{Alex Morgan}}\\
+\vspace{2pt}
+\small 604--555--0134 $\cdot$ alex.morgan@example.com $\cdot$ Vancouver, BC $\cdot$ linkedin.com/in/alexmorgan-demo
+\end{center}
+\vspace{-6pt}}
+
+\section{Profile}
+Revenue operations analyst with 5+ years turning messy GTM data into pipelines, dashboards and decisions. Builds the automation that lets a small ops team run like a big one.
+
+\section{Experience}
+\begin{itemize}[leftmargin=0.15in]
+\resumeSubheading{Revenue Operations Analyst}{Vancouver, BC}{Contoso — B2B SaaS}{Mar 2023 -- Present}
+\resumeItem{Own the revenue data model end-to-end: pipeline hygiene, lead routing and territory rules in HubSpot for a 40-person sales org.}
+\resumeItem{Built a Python + SQL nightly pipeline that reconciles CRM, billing and product usage into one exec dashboard — replaced 6 hours of weekly manual work.}
+\resumeItem{Cut stale-deal noise 38\% with automated cadence scoring and weekly forecast reviews.
+\vspace{-2pt}}
+\resumeSubheading{Business Operations Analyst}{Toronto, ON}{Fabrikam Systems}{Jun 2021 -- Mar 2023}
+\resumeItem{Automated vendor onboarding and contract tracking (Airtable + Zapier-class tooling), halving turnaround from 12 to 5 days.}
+\resumeItem{Partnered with finance to rebuild commission logic; found and fixed a 2-year accrual discrepancy.
+\vspace{-2pt}}
+\resumeSubheading{Operations Coordinator}{Vancouver, BC}{Fourth Coffee Roasters}{Aug 2019 -- Jun 2021}
+\resumeItem{Ran inventory and supplier reporting for 14 retail locations; introduced the first demand-forecast spreadsheet the buying team still uses.
+\vspace{-2pt}}
+\end{itemize}
+
+\section{Skills}
+\textbf{Data:} Python (pandas), SQL, dbt, spreadsheet modelling \quad
+\textbf{Stack:} HubSpot (admin), Salesforce, NetSuite, Airtable, Zapier \\
+\textbf{Practice:} Lead routing \& CRM hygiene, forecast cadence, process docs, exec reporting
+
+\section{Education}
+\textbf{B.Comm, Business Technology Management} — Simon Fraser University, 2019
+
+\end{document}
