@@ -87,3 +87,7 @@ The two halves share one SQLite file (`pipeline/data/autojob.db`) through a bind
 In daily use since September 2026. 15 sources, ~2k postings/month processed, review queue kept under ~60 active roles.
 
 *Built and operated by [saunalserver](https://github.com/saunalserver).*
+
+## License
+
+[MIT](LICENSE)
