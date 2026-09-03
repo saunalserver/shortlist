@@ -1,10 +1,18 @@
-# RoleCall
+# Shortlist
 
 An automated job-search pipeline with a self-hosted review dashboard.
 
 Every morning at 07:00 the pipeline pulls postings from ~15 sources (job boards, Greenhouse/Workday/Lever feeds, scraper-backed boards), deduplicates them against everything it has ever seen, scores each posting 1–10 against my candidate profile, and sends a single Telegram digest. I review the shortlist in the dashboard, and only for the roles I actually want does it generate a tailored resume + cover letter — then track the application through to response.
 
-**Why "RoleCall"?** Every morning the pipeline takes roll call of new roles.
+**Why "Shortlist"?** Fifteen sources in, one ranked shortlist out — the whole product is the list you actually review.
+
+## Screenshots
+
+| Review queue | Pipeline health |
+|---|---|
+| ![Review queue](docs/img/review.png) | ![Pipeline runs](docs/img/pipeline.png) |
+
+![Application tracker](docs/img/kanban.png)
 
 ## How it works
 

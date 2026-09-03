@@ -33,4 +33,4 @@ def main(tracker_db: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "/home/saunalserver/projects/rolecall/dashboard/data/jobsearch.db")
+    main(sys.argv[1] if len(sys.argv) > 1 else "/home/saunalserver/projects/shortlist/dashboard/data/jobsearch.db")

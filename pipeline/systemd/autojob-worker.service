@@ -4,8 +4,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/projects/rolecall/pipeline
-ExecStart=%h/projects/rolecall/pipeline/venv/bin/autojob worker
+WorkingDirectory=%h/projects/shortlist/pipeline
+ExecStart=%h/projects/shortlist/pipeline/venv/bin/autojob worker
 Restart=always
 RestartSec=10
 TimeoutStopSec=240

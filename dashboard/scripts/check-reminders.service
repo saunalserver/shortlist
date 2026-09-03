@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=saunalserver
-WorkingDirectory=/home/saunalserver/projects/rolecall/dashboard
-ExecStart=/home/saunalserver/projects/rolecall/dashboard/node_modules/.bin/tsx scripts/check-reminders.ts
+WorkingDirectory=/home/saunalserver/projects/shortlist/dashboard
+ExecStart=/home/saunalserver/projects/shortlist/dashboard/node_modules/.bin/tsx scripts/check-reminders.ts
 StandardOutput=journal
 StandardError=journal

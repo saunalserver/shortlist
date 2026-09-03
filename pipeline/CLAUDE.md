@@ -21,7 +21,7 @@ tagged `legacy-2026-09-01` and its two forks are branches `feature/shareable-v2`
 - Data: `data/autojob.db`, `data/autojob.log`; PDFs in `output/`. Profile + templates in `profile/` (git-ignored, personal data).
 - systemd **user** units: `autojob.timer` (07:00 America/Vancouver) → `autojob.service`; `autojob-worker.service` (always on).
   `systemctl --user status autojob.timer autojob-worker.service`. Logs: `journalctl --user -u autojob.service`.
-- Dashboard: `~/projects/rolecall/dashboard` (Docker :3100) mounts this directory read/write.
+- Dashboard: `~/projects/shortlist/dashboard` (Docker :3100) mounts this directory read/write.
 - Secrets in `.env`. Serper key rotated 2026-09-01; Gemini/Telegram/Adzuna/Jooble keys were in git history until 2026-09-01 and should still be rotated.
 
 ## Gotchas
