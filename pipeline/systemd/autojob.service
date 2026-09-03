@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/projects/Autojob-search
-ExecStart=%h/projects/Autojob-search/venv/bin/autojob run
+WorkingDirectory=%h/projects/rolecall/pipeline
+ExecStart=%h/projects/rolecall/pipeline/venv/bin/autojob run
 TimeoutStartSec=3h
 Nice=10
