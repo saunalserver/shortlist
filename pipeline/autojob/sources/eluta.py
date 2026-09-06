@@ -65,30 +65,35 @@ def parse_results(html: str) -> list[dict]:
 
 def fetch(settings: Settings) -> list[RawJob]:
     cfg = settings.source(NAME)
-    location = cfg.get("location", "Vancouver, BC")
+    # passes: [{location, max_queries?} | {remote_only: true, max_queries?}] — 2026-09-08 "both":
+    # city radius + Canada-wide remote (Eluta's remote_jobs=only ignores `l`, verified 2026-09-08).
+    passes = cfg.get("passes") or [{"location": cfg.get("location", "Vancouver, BC"),
+                                    "max_queries": cfg.get("max_queries", 8)}]
     out: list[RawJob] = []
     seen: set[str] = set()
-    for term in settings.source_queries(NAME)[: int(cfg.get("max_queries", 8))]:
-        for page in range(1, int(cfg.get("pages", 2)) + 1):
-            try:
-                html = get_text(SEARCH_URL, params={"q": term, "l": location, "pg": page}, headers=HEADERS)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("[eluta] '%s' p%d failed: %s", term, page, str(e)[:120])
-                break
-            rows = parse_results(html)
-            for r in rows:
-                url = canonical_url(r["url"])
-                if not url or url in seen or len(r["title"]) < 4:
-                    continue
-                seen.add(url)
-                snippet = r["snippet"]
-                if r["salary"]:
-                    snippet = f"Salary: {r['salary']}. {snippet}"
-                out.append(RawJob(url=url, title=r["title"], company=r["company"], source=NAME, location=r["location"],
-                                  snippet=snippet_of(snippet, 400), posted_at=ago_to_date(r["ago"]),
-                                  remote=True if "remote" in r["location"].lower() else None))
-            if len(rows) < 10:
-                break
-            time.sleep(0.6)
+    for p in passes:
+        geo = {"remote_jobs": "only"} if p.get("remote_only") else {"l": p.get("location", "Vancouver, BC")}
+        for term in settings.source_queries(NAME)[: int(p.get("max_queries", 8))]:
+            for page in range(1, int(cfg.get("pages", 2)) + 1):
+                try:
+                    html = get_text(SEARCH_URL, params={"q": term, "pg": page, **geo}, headers=HEADERS)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[eluta] '%s' p%d failed: %s", term, page, str(e)[:120])
+                    break
+                rows = parse_results(html)
+                for r in rows:
+                    url = canonical_url(r["url"])
+                    if not url or url in seen or len(r["title"]) < 4:
+                        continue
+                    seen.add(url)
+                    snippet = r["snippet"]
+                    if r["salary"]:
+                        snippet = f"Salary: {r['salary']}. {snippet}"
+                    out.append(RawJob(url=url, title=r["title"], company=r["company"], source=NAME, location=r["location"],
+                                      snippet=snippet_of(snippet, 400), posted_at=ago_to_date(r["ago"]),
+                                      remote=True if p.get("remote_only") or "remote" in r["location"].lower() else None))
+                if len(rows) < 10:
+                    break
+                time.sleep(0.6)
     logger.info("[eluta] %d jobs", len(out))
     return out

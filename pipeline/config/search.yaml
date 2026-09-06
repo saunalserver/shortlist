@@ -533,11 +533,11 @@ sources:
     pages: 2
     results_per_page: 50
     max_days_old: 7
-  jooble:                      # free key, 500 requests total → few queries
+  jooble:                      # free key, 500 requests LIFETIME (not monthly — verified with Jooble docs)
     enabled: true
-    location: "Vancouver, BC"
-    radius_km: 50
-    max_queries: 6
+    passes:                    # 2026-09-08 "both": still 6 requests/run total, split across geos
+      - { location: "Vancouver, BC", radius_km: 50, max_queries: 3 }
+      - { location: Canada, max_queries: 3 }   # API has no remote filter — non-remote rows die in the prefilter
   boards:                      # LinkedIn + Indeed (+ ZipRecruiter, Glassdoor) via python-jobspy (no key)
     enabled: true
     sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
@@ -605,9 +605,11 @@ sources:
 
   amazon:                     # amazon.jobs public JSON (no key, full descriptions inline — zero scrapes)
     enabled: true
-    city: Vancouver
     result_limit: 100
     pages: 2
+    passes:                    # 2026-09-08 "both": local + Canada-wide (API has no remote flag; prefilter kills on-site non-Vancouver)
+      - { city: Vancouver }
+      - { country: CAN }
 
   hn:                         # HN "Who is hiring" monthly thread via Algolia (~2 requests/month)
     enabled: true
@@ -666,9 +668,10 @@ sources:
   # indexes employer career sites (health authorities, biotech, engineering firms) that the big boards miss.
   eluta:
     enabled: true
-    location: "Vancouver, BC"
-    max_queries: 6
     pages: 1                   # 10 results per page
+    passes:                    # 2026-09-08 "both": city radius + Canada-wide remote
+      - { location: "Vancouver, BC", max_queries: 6 }
+      - { remote_only: true, max_queries: 6 }   # Eluta remote_jobs=only — Canada-wide remote postings
 
   # ---- Company career pages via their ATS APIs (no key) --------------------
   # Run `autojob companies verify` to check slugs, or `autojob companies probe <name>` to add.

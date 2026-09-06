@@ -18,28 +18,34 @@ def fetch(settings: Settings) -> list[RawJob]:
         logger.info("[jooble] no API key, skipping")
         return []
     cfg = settings.source(NAME)
+    # passes: [{location, radius_km?, max_queries?}] — 2026-09-08 "both": Vancouver + Canada-wide.
+    # The free key has a 500-request LIFETIME cap, so keep the per-run total small.
+    passes = cfg.get("passes") or [{"location": cfg.get("location", "Vancouver, BC"),
+                                    "radius_km": cfg.get("radius_km", 50),
+                                    "max_queries": cfg.get("max_queries", 6)}]
     out: list[RawJob] = []
     seen: set[str] = set()
-    for term in settings.source_queries(NAME)[: int(cfg.get("max_queries", 6))]:
-        try:
-            data = post_json(
-                f"https://jooble.org/api/{key}",
-                json={"keywords": term, "location": cfg.get("location", "Vancouver, BC"),
-                      "radius": str(cfg.get("radius_km", 50)), "page": 1},
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[jooble] '%s' failed: %s", term, str(e)[:120])
-            continue
-        for j in data.get("jobs", []):
-            url = canonical_url(j.get("link", ""))
-            if not url or url in seen:
+    for p in passes:
+        for term in settings.source_queries(NAME)[: int(p.get("max_queries", 6))]:
+            try:
+                data = post_json(
+                    f"https://jooble.org/api/{key}",
+                    json={"keywords": term, "location": p.get("location", "Vancouver, BC"),
+                          "radius": str(p.get("radius_km", 50)), "page": 1},
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[jooble] '%s' failed: %s", term, str(e)[:120])
                 continue
-            seen.add(url)
-            desc = clean_html(j.get("snippet") or j.get("description") or "")
-            out.append(RawJob(
-                url=url, title=j.get("title", ""), company=j.get("company", ""), source=NAME,
-                location=j.get("location", ""), description=truncate(desc), snippet=snippet_of(desc),
-                employment_type=j.get("type") or None, posted_at=(j.get("updated") or "")[:10] or None,
-            ))
+            for j in data.get("jobs", []):
+                url = canonical_url(j.get("link", ""))
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                desc = clean_html(j.get("snippet") or j.get("description") or "")
+                out.append(RawJob(
+                    url=url, title=j.get("title", ""), company=j.get("company", ""), source=NAME,
+                    location=j.get("location", ""), description=truncate(desc), snippet=snippet_of(desc),
+                    employment_type=j.get("type") or None, posted_at=(j.get("updated") or "")[:10] or None,
+                ))
     logger.info("[jooble] %d jobs", len(out))
     return out
