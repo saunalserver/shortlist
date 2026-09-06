@@ -92,14 +92,14 @@ def cmd_companies(args: argparse.Namespace) -> int:
     if args.action == "verify":
         dead: list[str] = []
         with D.db() as conn:
-            for ats_type in ("greenhouse", "lever", "ashby"):
+            for ats_type in ats.FETCHERS:
                 for slug in cfg.get(ats_type, []) or []:
                     try:
                         n = len(ats.fetch_board(ats_type, slug, "", "check"))
-                        print(f"ok    {ats_type:10} {slug:28} {n} postings")
+                        print(f"ok    {ats_type:16} {slug:28} {n} postings")
                     except Exception as e:  # noqa: BLE001
                         code = getattr(getattr(e, "response", None), "status_code", None)
-                        print(f"DEAD  {ats_type:10} {slug:28} {code or type(e).__name__}")
+                        print(f"DEAD  {ats_type:16} {slug:28} {code or type(e).__name__}")
                         dead.append(f"{ats_type}/{slug}")
                     time.sleep(0.15)
             conn.commit()
@@ -113,7 +113,48 @@ def cmd_companies(args: argparse.Namespace) -> int:
                 t, url = ats.probe(conn, slug, name)
                 print(f"{name:28} → {t or 'none'} {url or ''}")
         return 0
+    if args.action == "news":
+        return _companies_news(settings)
     return 1
+
+
+def _companies_news(settings) -> int:
+    """Hiring press releases via serper /news (a few credits) → probe the company names found.
+    The earliest signal there is: 'opening a Vancouver office, 300 jobs' runs before postings hit boards."""
+    import re
+
+    from autojob import ats
+    from autojob.db import connect
+    from autojob.sources.base import post_json
+
+    key = settings.secrets.serper_api_key
+    if not key:
+        print("no serper key")
+        return 1
+    queries = settings.get("discovery.news_queries", [
+        'Vancouver office opening hiring', 'Vancouver company expanding jobs', 'BC tech company hiring Vancouver'])
+    verb = re.compile(r"^([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*?)\s+(?:announces?|opens?|opening|expands?|expanding|"
+                      r"to open|to expand|to add|adding|creating|launches?|plans)\b")
+    names: list[str] = []
+    for q in queries[:3]:
+        try:
+            data = post_json("https://google.serper.dev/news", json={"q": q, "num": 20}, headers={"X-API-KEY": key})
+        except Exception as e:  # noqa: BLE001
+            print(f"query '{q}' failed: {str(e)[:100]}")
+            continue
+        for a in data.get("news", []):
+            m = verb.match((a.get("title") or "").strip())
+            if m and 2 < len(m.group(1)) < 40:
+                names.append(m.group(1))
+    names = list(dict.fromkeys(names))[:12]
+    print(f"{len(names)} company candidates from {len(queries[:3])} news queries:")
+    with connect() as conn:
+        for name in names:
+            slug = re.sub(r"[^a-z0-9]", "", name.lower())
+            t, url = ats.probe(conn, slug, name)
+            print(f"  {name:32} → {t or 'none':16} {url or ''}")
+    print("add hits to sources.ats_companies.<vendor> in search.yaml")
+    return 0
 
 
 def cmd_expire(args: argparse.Namespace) -> int:
@@ -208,8 +249,8 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("stats", help="database and run statistics")
     st.set_defaults(func=cmd_stats)
 
-    c = sub.add_parser("companies", help="verify or probe ATS company slugs")
-    c.add_argument("action", choices=["verify", "probe"])
+    c = sub.add_parser("companies", help="verify, probe, or news-discover ATS companies")
+    c.add_argument("action", choices=["verify", "probe", "news"])
     c.add_argument("names", nargs="*")
     c.set_defaults(func=cmd_companies)
 

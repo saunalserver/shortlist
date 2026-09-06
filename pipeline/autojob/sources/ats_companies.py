@@ -1,7 +1,10 @@
-"""Company career pages via Greenhouse / Lever / Ashby public APIs.
+"""Company career pages via public ATS APIs (Greenhouse / Lever / Ashby / SmartRecruiters /
+Recruitee / Workable / Personio).
 
-Slugs live in config/search.yaml under sources.ats_companies. Jobs are kept when the
-title contains one of ``title_keywords`` and the location looks like Canada/remote.
+Boards come from two places: curated slug lists in config/search.yaml under sources.ats_companies,
+and the ``ats_boards`` table (filled by ``scripts/expand_ats_boards.py`` — the LastRound CC-BY
+dataset probe). Jobs are kept when the title contains one of ``title_keywords`` and the
+location looks like Canada/remote.
 """
 from __future__ import annotations
 
@@ -9,6 +12,7 @@ import logging
 import time
 
 from autojob import ats
+from autojob.db import connect
 from autojob.models import RawJob
 from autojob.prefilter import CANADA_MARKERS, REMOTE_MARKERS, location_reason
 from autojob.settings import Settings
@@ -35,11 +39,15 @@ def fetch(settings: Settings) -> list[RawJob]:
     keywords = list(cfg.get("title_keywords", []))
     cap = int(cfg.get("max_jobs_per_company", 15))
     out: list[RawJob] = []
-    boards = [(ats_type, slug) for ats_type in ("greenhouse", "lever", "ashby") for slug in cfg.get(ats_type, []) or []]
+    boards = [(ats_type, slug, "") for ats_type in ats.FETCHERS for slug in cfg.get(ats_type, []) or []]
+    if cfg.get("use_discovered_boards", True):
+        with connect() as conn:
+            rows = conn.execute("SELECT ats_type, slug, company FROM ats_boards").fetchall()
+        boards += [(r["ats_type"], r["slug"], r["company"]) for r in rows if r["ats_type"] in ats.FETCHERS]
     dead: list[str] = []
-    for ats_type, slug in boards:
+    for ats_type, slug, company in boards:
         try:
-            jobs = ats.fetch_board(ats_type, slug, "", NAME)
+            jobs = ats.fetch_board(ats_type, slug, company, NAME)
         except Exception as e:  # noqa: BLE001
             code = getattr(getattr(e, "response", None), "status_code", None)
             if code == 404:

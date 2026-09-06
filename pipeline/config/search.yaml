@@ -46,8 +46,8 @@ queries:
 scoring:
   min_score_to_queue: 6        # jobs at/above this become "queued" for your review
   # Docs are generated on demand from the dashboard only — no auto-generation (autodoc dropped 2026-09-07).
-  max_llm_calls_per_run: 800   # hard safety cap (raised 2026-09-07 with serper volume)
-  max_scrapes_per_run: 300     # descriptions fetched from job pages per run (each ~1.5 s)
+  max_llm_calls_per_run: 1000  # hard safety cap (raised 2026-09-07: free OpenRouter budget is 1,000/day, ~130 used)
+  max_scrapes_per_run: 600    # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
   models:
     - { name: minimax/minimax-m2.7:free,              rpm: 20 }  # scorer: fast (~13s), valid JSON, 82.9% instr-following
@@ -532,9 +532,9 @@ sources:
     location: "Vancouver, BC"
     radius_km: 50
     max_queries: 6
-  boards:                      # LinkedIn + Indeed via python-jobspy (no key)
+  boards:                      # LinkedIn + Indeed (+ ZipRecruiter, Glassdoor) via python-jobspy (no key)
     enabled: true
-    sites: [linkedin, indeed]
+    sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
     location: "Vancouver, BC"
     country_indeed: canada
     results_per_query: 25
@@ -589,6 +589,17 @@ sources:
     feeds:
       - remote-management-and-finance-jobs
       - remote-product-jobs
+
+  amazon:                     # amazon.jobs public JSON (no key, full descriptions inline — zero scrapes)
+    enabled: true
+    city: Vancouver
+    result_limit: 100
+    pages: 2
+
+  hn:                         # HN "Who is hiring" monthly thread via Algolia (~2 requests/month)
+    enabled: true
+    title_keywords: [operations, coordinator, program, project, "chief of staff", "business analyst",
+                     analytics, "data analyst", success, support, partnerships, enablement, implementation]
   himalayas:
     enabled: true
     countries: [CA]
@@ -615,6 +626,27 @@ sources:
       - { tenant: ubc, wd: wd10, site: ubcstaffjobs, name: "University of British Columbia" }
       - { tenant: aritzia, wd: wd3, site: External, name: Aritzia }
       - { tenant: stemcell, wd: wd3, site: External_Careers, name: "STEMCELL Technologies" }
+      # 2026-09-07 expansion (serper discovery + identity/location-verified; scripts note in docs/):
+      # banks/insurers (ops + analyst volume, mostly Toronto-remote filtered per job)
+      - { tenant: rbc, wd: wd3, site: RBCGLOBAL1, name: RBC }
+      - { tenant: td, wd: wd3, site: TD_Bank_Careers, name: "TD Bank" }
+      - { tenant: bmo, wd: wd3, site: External, name: BMO }
+      - { tenant: cibc, wd: wd3, site: search, name: CIBC }
+      - { tenant: manulife, wd: wd3, site: MFCJH_Jobs, name: Manulife }
+      - { tenant: sunlife, wd: wd3, site: Experienced-Jobs, name: "Sun Life" }
+      - { tenant: desjardins, wd: wd10, site: Desjardins, name: Desjardins }
+      - { tenant: lifeworks, wd: wd3, site: External, name: "TELUS Health" }
+      # BC/Canada employers
+      - { tenant: bestbuycanada, wd: wd3, site: BestBuyCA_Career, name: "Best Buy Canada" }
+      - { tenant: pfg, wd: wd3, site: SaveonfoodsCareers, name: "Save-On-Foods" }
+      - { tenant: bcaa, wd: wd3, site: bcaacareers, name: BCAA }
+      - { tenant: clio, wd: wd3, site: ClioCareerSite, name: Clio }
+      - { tenant: magna, wd: wd3, site: Magna, name: "Magna International" }
+      - { tenant: enbridge, wd: wd3, site: enbridge_careers, name: Enbridge }
+      - { tenant: suncor, wd: wd1, site: Suncor_External, name: Suncor }
+      - { tenant: agecare, wd: wd10, site: AgeCare_Careers_External, name: AgeCare }
+      - { tenant: navcanada, wd: wd10, site: NAV_Careers, name: "NAV CANADA" }
+      - { tenant: churchdwight, wd: wd1, site: chdcanadacareers, name: "Church & Dwight Canada" }
 
   # ---- Eluta.ca — Canadian aggregator, Vancouver radius (no key) ------------
   # Job pages are bot-walled, so these are scored from the search snippet only (low confidence). Kept because it
@@ -630,6 +662,9 @@ sources:
   ats_companies:
     enabled: true
     max_jobs_per_company: 15
+    use_discovered_boards: true   # boards verified Canada-relevant in the ats_boards table
+                                 # (scripts/expand_ats_boards.py — LastRound AI ATS Directory, CC BY 4.0,
+                                 # datahub.io/lastroundai-hiring-data, DOI 10.6084/m9.figshare.33154145)
     # Phrase-level on purpose: bare words like "analyst" match half of a big company's board.
     title_keywords: [operations, " ops", "ops ", bizops, revops, coordinator, "chief of staff",
                      "business analyst", "strategy & ops", "strategy and ops", "strategy & operations",

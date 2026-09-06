@@ -23,6 +23,8 @@ SOURCE_NAMES = [
     "eluta",
     "ats_companies",
     "yc",
+    "amazon",
+    "hn",
 ]
 
 

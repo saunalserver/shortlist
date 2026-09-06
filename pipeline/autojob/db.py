@@ -142,6 +142,16 @@ CREATE TABLE IF NOT EXISTS company_ats_cache (
     probe_count INTEGER DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS ats_boards (
+    ats_type TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    company TEXT NOT NULL,
+    url TEXT,
+    canada_jobs INTEGER DEFAULT 0,
+    added TEXT,
+    PRIMARY KEY (ats_type, slug)
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL,
