@@ -40,6 +40,28 @@ def test_serper_title_and_workday_location():
     assert _location_from_url("https://jobs.lever.co/acme/123") == ""
 
 
+def test_adzuna_wheres_and_board_passes():
+    from autojob.sources.adzuna import _wheres
+    from autojob.sources.boards import _is_remote, _passes
+
+    assert _wheres({"where": ["Vancouver", "Canada"]}) == ["Vancouver", "Canada"]
+    assert _wheres({"where": "Vancouver"}) == ["Vancouver"]
+    assert _wheres({}) == ["Vancouver"]
+
+    cfg = {"location": "Vancouver, BC", "max_queries": 20, "results_per_query": 35,
+           "locations": [{"location": "Vancouver, BC"},
+                         {"location": "Canada", "remote_only": True, "max_queries": 12}]}
+    ps = _passes(cfg)
+    assert ps[0]["max_queries"] == 20 and ps[0]["location"] == "Vancouver, BC"
+    assert ps[1]["max_queries"] == 12 and ps[1]["results_per_query"] == 35   # inherits globals
+    assert not _passes({"location": "X", "max_queries": 5})[0].get("remote_only")
+
+    assert _is_remote("Toronto, ON (Remote)", None)
+    assert _is_remote("Toronto, ON", True)
+    assert not _is_remote("Toronto, ON", None)
+    assert not _is_remote("Toronto, ON", "nan")
+
+
 def test_scraper_rejects_bot_walls(monkeypatch):
     from autojob import scraper
 

@@ -11,7 +11,7 @@ CFG = yaml.safe_load((ROOT / "config" / "search.yaml").read_text())
 def test_scoring_block_is_intact():
     assert CFG["scoring"]["models"] and all(m.get("name") for m in CFG["scoring"]["models"])
     assert CFG["scoring"]["docs_models"]
-    assert int(CFG["scoring"]["min_score_to_queue"]) <= int(CFG["scoring"]["auto_docs_min_score"])
+    assert int(CFG["scoring"]["min_score_to_queue"]) >= 1   # autodoc threshold removed 2026-09-07 (docs on demand)
     assert int(CFG["scoring"]["max_llm_calls_per_run"]) > 0
 
 

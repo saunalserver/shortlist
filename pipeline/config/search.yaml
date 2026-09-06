@@ -527,7 +527,8 @@ sources:
     enabled: true
     match: title               # title = query words must appear in the job title (6 results instead of 93 for
                                # "operations coordinator", almost all relevant); any = anywhere in the posting
-    where: Vancouver
+    where: [Vancouver, Canada] # 2026-09-08 "both": 50 km local radius + country-wide (distance applies to the
+                               # city pass only; on-site non-Vancouver rows die in the prefilter, pre-scrape)
     distance_km: 50
     pages: 2
     results_per_page: 50
@@ -540,12 +541,17 @@ sources:
   boards:                      # LinkedIn + Indeed (+ ZipRecruiter, Glassdoor) via python-jobspy (no key)
     enabled: true
     sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
-    location: "Vancouver, BC"
     country_indeed: canada
     results_per_query: 35      # 2026-09-06: 25→35 for deeper per-query sweep toward the 1000/day goal (Indeed paginates fine; LinkedIn caps itself ~25)
     hours_old: 120            # 5 days: a posting missed one day (rate limit, cap) gets another chance
-    linkedin_fetch_description: true
-    max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in
+    locations:                 # 2026-09-08 "both": local pass unchanged + Canada-wide remote pass
+      - location: "Vancouver, BC"
+      - location: "Canada"     # keeps only remote-flagged rows (or "remote" in the location string) so
+        remote_only: true      # Toronto/Calgary on-site never costs a scrape or LLM call
+        max_queries: 12        # first 12 master queries (best volume-to-fit)
+        results_per_query: 20
+        linkedin_fetch_description: false   # skip LinkedIn's slow per-job fetch; survivors get scraped post-prefilter
+    max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in (city pass)
   jobbank:                     # Government of Canada Job Bank (HTML)
     enabled: false              # dead 2026-09-07: 43 jobs / 0 queued in 4 days
     location: "Vancouver, BC"
