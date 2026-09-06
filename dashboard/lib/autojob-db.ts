@@ -270,6 +270,33 @@ export function getRecentRuns(limit = 10): RunRow[] {
   return getDb().prepare('SELECT * FROM runs ORDER BY id DESC LIMIT ?').all(limit) as RunRow[];
 }
 
+export interface SerperCredits {
+  used: number;
+  total: number;
+  left: number;
+}
+
+/** Serper has no balance API — the pipeline counts its own spend in the meta table. */
+export function getSerperCredits(): SerperCredits {
+  let used = 0;
+  try {
+    const row = getDb().prepare("SELECT value FROM meta WHERE key = 'serper_credits_used'").get() as { value: string } | undefined;
+    used = row ? Number(row.value) || 0 : 0;
+  } catch {
+    // meta table not created yet
+  }
+  let total = 2500;
+  try {
+    const fs = require('fs');
+    const env = fs.readFileSync(`${process.env.AUTOJOB_PROJECT_ROOT || '/app/autojob-source'}/.env`, 'utf8');
+    const m = env.match(/^SERPER_CREDITS_TOTAL=(\d+)/m);
+    if (m) total = Number(m[1]);
+  } catch {
+    // keep default
+  }
+  return { used, total, left: Math.max(total - used, 0) };
+}
+
 export function getSourceHealth(): SourceHealth[] {
   return getDb().prepare(`
     SELECT s.source, s.started_at as last_run, s.fetched, s.new_jobs, s.duration_s, s.error,

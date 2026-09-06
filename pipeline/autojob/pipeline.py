@@ -1,7 +1,9 @@
-"""The daily run: fetch → dedupe → prefilter → scrape → score → (auto-docs) → digest.
+"""The daily run: fetch → dedupe → prefilter → scrape → score → digest.
 
 Sequential and boring on purpose. Abort is a flag in ``pipeline_state.command``
 checked between jobs, so the dashboard can stop a run from another process.
+Docs are generated on demand from the dashboard (worker ``docs`` command), never
+automatically.
 """
 from __future__ import annotations
 
@@ -304,7 +306,7 @@ def _install_sigterm_abort() -> None:
 
 
 def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | None = None,
-        no_docs: bool = False, no_notify: bool = False, max_jobs: int | None = None) -> RunSummary:
+        no_notify: bool = False, max_jobs: int | None = None) -> RunSummary:
     setup_logging()
     D.init_db()
     acquire_lock()
@@ -359,16 +361,7 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
             queued_ids = []
         logger.info("scoring: %d queued, %d skipped, %d errors (%d LLM calls)", summary.queued, summary.skipped,
                     summary.errors, summary.llm_calls)
-        # 6. auto docs
-        if not dry_run and not no_docs and queued_ids:
-            min_auto = int(settings.get("scoring.auto_docs_min_score", 8))
-            auto = [j["id"] for j in D.get_jobs(conn, queued_ids) if (j.get("fit_score") or 0) >= min_auto]
-            if auto:
-                D.set_pipeline_state(conn, current_phase="generating", jobs_total=len(auto), jobs_processed=0)
-                conn.commit()
-                logger.info("auto-generating documents for %d jobs scoring ≥ %d", len(auto), min_auto)
-                generate_docs_for(settings, conn, auto, summary)
-        # 7. notify
+        # 6. notify
         summary.status = "done"
         D.finish_run(conn, run_id, "done", **summary.as_row())
         conn.commit()

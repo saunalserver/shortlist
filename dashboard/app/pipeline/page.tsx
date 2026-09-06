@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { fetchAutojobStats, fetchRecentRuns, fetchPipelineState } from '@/actions/autojob';
+import { fetchAutojobStats, fetchRecentRuns, fetchPipelineState, fetchSerperCredits } from '@/actions/autojob';
 import { RunControls } from './run-controls';
 
 export const dynamic = 'force-dynamic';
@@ -71,13 +71,29 @@ function minutes(a: string, b: string | null) {
   return `${Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)} min`;
 }
 
+function SerperBadge({ credits }: { credits: { left: number; total: number } }) {
+  const frac = credits.total > 0 ? credits.left / credits.total : 1;
+  const color = frac > 0.5 ? 'text-green-400' : frac > 0.2 ? 'text-[#e8a317]' : 'text-red-400';
+  return (
+    <span
+      title={`Serper credits: ${credits.left.toLocaleString()} left of ${credits.total.toLocaleString()} (tracked by the pipeline; set SERPER_CREDITS_TOTAL in pipeline/.env after a top-up)`}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-[#1a2744] bg-[#111b2e] px-3 py-1 text-xs font-mono ${color}`}
+    >
+      ⚡ {credits.left.toLocaleString()} / {credits.total.toLocaleString()}
+    </span>
+  );
+}
+
 export default async function PipelineDashboardPage() {
-  const [stats, runs, state] = await Promise.all([fetchAutojobStats(), fetchRecentRuns(10), fetchPipelineState()]);
+  const [stats, runs, state, serper] = await Promise.all([fetchAutojobStats(), fetchRecentRuns(10), fetchPipelineState(), fetchSerperCredits()]);
 
   return (
     <>
       <header className="h-16 border-b border-[#1a2744] flex items-center justify-between px-6">
-        <h2 className="text-lg font-semibold text-[#d4dce8]">Pipeline</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-[#d4dce8]">Pipeline</h2>
+          <SerperBadge credits={serper} />
+        </div>
         <RunControls initialState={state} />
       </header>
 

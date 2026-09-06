@@ -123,7 +123,22 @@ def fetch(settings: Settings) -> list[RawJob]:
             out.append(RawJob(url=url, title=title, company=_company_from_url(link), source=NAME,
                               location=_location_from_url(link), snippet=snippet_of(item.get("snippet", ""))))
     logger.info("[serper] %d jobs from %d searches (%d credits)", len(out), len(batch), credits_used)
+    if credits_used:
+        _track_credits(credits_used)
     return out
+
+
+def _track_credits(credits: int) -> None:
+    """Cumulative spend counter in the meta table — the dashboard shows total minus this.
+    No serper balance API exists, so we account locally."""
+    try:
+        from autojob.db import connect
+        with connect() as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("INSERT INTO meta(key, value) VALUES('serper_credits_used', '0') ON CONFLICT(key) DO NOTHING")
+            conn.execute("UPDATE meta SET value = CAST(value AS INTEGER) + ? WHERE key = 'serper_credits_used'", (credits,))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[serper] could not record credit spend: %s", str(e)[:120])
 
 
 def _rotation_offset(n_items: int, budget: int) -> int:

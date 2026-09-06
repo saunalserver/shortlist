@@ -16,7 +16,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     only = [s.strip() for s in args.sources.split(",")] if args.sources else None
     try:
-        s = run(get_settings(), dry_run=args.dry_run, only_sources=only, no_docs=args.no_docs,
+        s = run(get_settings(), dry_run=args.dry_run, only_sources=only,
                 no_notify=args.no_notify, max_jobs=args.max_jobs)
     except AlreadyRunning as e:
         print(f"error: {e}", file=sys.stderr)
@@ -190,7 +190,6 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("run", help="fetch, score and notify (the daily job)")
     r.add_argument("--dry-run", action="store_true", help="score but generate no documents and send no digest")
     r.add_argument("--sources", help="comma-separated subset of sources")
-    r.add_argument("--no-docs", action="store_true", help="skip automatic document generation")
     r.add_argument("--no-notify", action="store_true", help="skip the Telegram digest")
     r.add_argument("--max-jobs", type=int, help="score at most N jobs (testing)")
     r.set_defaults(func=cmd_run)

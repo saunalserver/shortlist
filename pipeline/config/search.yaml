@@ -45,9 +45,9 @@ queries:
 
 scoring:
   min_score_to_queue: 6        # jobs at/above this become "queued" for your review
-  auto_docs_min_score: 8       # resume + cover letter generated automatically at/above this; others on demand
-  max_llm_calls_per_run: 400   # hard safety cap
-  max_scrapes_per_run: 150     # descriptions fetched from job pages per run (each ~1.5 s)
+  # Docs are generated on demand from the dashboard only — no auto-generation (autodoc dropped 2026-09-07).
+  max_llm_calls_per_run: 800   # hard safety cap (raised 2026-09-07 with serper volume)
+  max_scrapes_per_run: 300     # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
   models:
     - { name: minimax/minimax-m2.7:free,              rpm: 20 }  # scorer: fast (~13s), valid JSON, 82.9% instr-following
@@ -542,22 +542,15 @@ sources:
     linkedin_fetch_description: true
     max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in
   jobbank:                     # Government of Canada Job Bank (HTML)
-    enabled: true
+    enabled: false              # dead 2026-09-07: 43 jobs / 0 queued in 4 days
     location: "Vancouver, BC"
     max_queries: 8
-  serper:                      # Google via serper.dev — 2,500 free credits TOTAL, so budgeted
+  serper:                      # Google via serper.dev — paid credits, and we now spend them freely
     enabled: true
-    queries_per_run: 12        # ≈ 12 credits/day → ~7 months on the free tier
-    queries:                   # own short list: 8 queries × 8 plan steps = 64 searches ≈ 5-day rotation
-      - operations specialist
-      - operations analyst
-      - business operations
-      - revenue operations
-      - operations coordinator
-      - implementation specialist
-      - customer operations
-      - strategy and operations
-    results_per_query: 10        # free accounts reject num > 10
+    queries_per_run: 48        # ≈48 credits/day; full plan rotation in ~4–5 days (raised 2026-09-07 from 12)
+    # No own query list: falls back to the 28 master queries above, so each plan step
+    # sweeps the whole list — 8 steps × 28 queries = 224 searches per rotation.
+    results_per_query: 10        # num>10 gets 400s on site:-scoped queries — keep 10, volume comes from queries_per_run
     recency: qdr:w             # past week
     # Rotating query plan: each run takes the next `queries_per_run` items, so coverage
     # cycles through all of them over a few days.
@@ -575,18 +568,18 @@ sources:
 
   # ---- Remote-first boards (no key) ---------------------------------------
   remotive:
-    enabled: true
+    enabled: false              # dead 2026-09-07: 18 jobs / 0 queued, avg score 2.0
     limit_per_query: 20
   remoteok:
-    enabled: true
+    enabled: false              # dead 2026-09-07: 38 jobs / 0 queued, avg score 1.5
     tags: [operations, ops, support, success, project-management, management, business, analyst, non-tech]
   jobicy:
-    enabled: true
+    enabled: false              # dead 2026-09-07: 91 jobs / 1 queued
     geo: canada
     tags: [business, project-management, admin, marketing]   # Jobicy "industry" slugs
     count: 50
   themuse:
-    enabled: true
+    enabled: false              # dead 2026-09-07: 68 jobs / 0 queued, avg score 2.6
     categories: ["Business Operations", "Project Management", "Data and Analytics"]
     locations: ["Vancouver, Canada", "Flexible / Remote"]
     levels: [entry, mid]      # The Muse levels: internship, entry, mid, senior, management
@@ -803,7 +796,7 @@ sources:
       - hopper
 
   yc:                          # Y Combinator "hiring" companies → their ATS boards
-    enabled: true
+    enabled: false              # dead 2026-09-07: 12 jobs / 4 days, 9.5% unique — not worth the probes
     max_new_probes_per_run: 100    # companies whose ATS we look up per run (results cached 30 days)
     title_keywords: [operations, " ops", "ops ", bizops, revops, coordinator, "chief of staff",
                      "business analyst", "strategy & ops", "strategy and ops", enablement, automation, workflow,

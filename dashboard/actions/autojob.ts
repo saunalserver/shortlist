@@ -4,7 +4,7 @@ import {
   getAutojobStats, getAutojobJobs, getAutojobJobById, getPipelineState, enqueueCommand, getPendingCommands, setAbortFlag,
   setUserAction, getActionedIds, getRecentRuns, getSourceHealth,
   type AutojobJobFilters, type AutojobJob, type AutojobStats, type AutojobJobListResult, type PipelineState,
-  type RunRow, type SourceHealth,
+  type RunRow, type SourceHealth, getSerperCredits, type SerperCredits,
 } from '@/lib/autojob-db';
 import { readAutojobLogs, readSearchConfig } from '@/lib/autojob-config';
 import { createApplication } from '@/lib/db';
@@ -31,6 +31,10 @@ export async function fetchPipelineState(): Promise<PipelineState> {
 
 export async function fetchRecentRuns(limit = 10): Promise<RunRow[]> {
   return getRecentRuns(limit);
+}
+
+export async function fetchSerperCredits(): Promise<SerperCredits> {
+  return getSerperCredits();
 }
 
 export async function fetchSourceHealth(): Promise<SourceHealth[]> {
