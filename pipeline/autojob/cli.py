@@ -136,9 +136,11 @@ def _companies_news(settings) -> int:
     verb = re.compile(r"^([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*)*?)\s+(?:announces?|opens?|opening|expands?|expanding|"
                       r"to open|to expand|to add|adding|creating|launches?|plans)\b")
     names: list[str] = []
+    spent = 0
     for q in queries[:3]:
         try:
             data = post_json("https://google.serper.dev/news", json={"q": q, "num": 20}, headers={"X-API-KEY": key})
+            spent += 1
         except Exception as e:  # noqa: BLE001
             print(f"query '{q}' failed: {str(e)[:100]}")
             continue
@@ -149,6 +151,9 @@ def _companies_news(settings) -> int:
     names = list(dict.fromkeys(names))[:12]
     print(f"{len(names)} company candidates from {len(queries[:3])} news queries:")
     with connect() as conn:
+        if spent:  # keep the serper balance badge honest (run-source counter lives in sources/serper.py)
+            conn.execute("INSERT INTO meta(key, value) VALUES('serper_credits_used', '0') ON CONFLICT(key) DO NOTHING")
+            conn.execute("UPDATE meta SET value = CAST(value AS INTEGER) + ? WHERE key = 'serper_credits_used'", (spent,))
         for name in names:
             slug = re.sub(r"[^a-z0-9]", "", name.lower())
             t, url = ats.probe(conn, slug, name)

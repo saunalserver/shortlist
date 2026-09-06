@@ -40,6 +40,11 @@ queries:
   - go-to-market operations
   - growth operations
   - chief of staff
+  # 2026-09-06: supply-chain family — Vancouver port/logistics market, no query targeted these before
+  - supply chain analyst
+  - procurement specialist
+  - logistics coordinator
+  - vendor operations
   # Dropped 2026-09-02: "workflow automation" (a skill, not a title — kept in the career-page title filters),
   # "automation specialist" (in the Lower Mainland this is PLC / controls / building automation work).
 
@@ -537,7 +542,7 @@ sources:
     sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
     location: "Vancouver, BC"
     country_indeed: canada
-    results_per_query: 25
+    results_per_query: 35      # 2026-09-06: 25→35 for deeper per-query sweep toward the 1000/day goal (Indeed paginates fine; LinkedIn caps itself ~25)
     hours_old: 120            # 5 days: a posting missed one day (rate limit, cap) gets another chance
     linkedin_fetch_description: true
     max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in
@@ -563,6 +568,8 @@ sources:
       - { suffix: "(site:apply.workable.com OR site:jobs.smartrecruiters.com) (Vancouver OR Canada)", queries: default }
       - { suffix: "site:myworkdayjobs.com Vancouver", queries: default }
       - { suffix: "site:wellfound.com/jobs (Vancouver OR Canada)", queries: default }
+      # T-Net (bctechnology.com) direct fetch is Cloudflare-walled; this is the documented fallback (1 credit/query)
+      - { suffix: "site:bctechnology.com", queries: default }
       - { suffix: "Vancouver", queries: default }
       - { suffix: "remote Canada", queries: default }
 
