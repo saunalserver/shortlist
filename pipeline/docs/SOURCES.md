@@ -11,7 +11,7 @@ Yield numbers are from the runs on 2026-09-01/02 (Vancouver, operations-role que
 | `himalayas` | none | 30 s | ~450 | Remote jobs with `country=CA` + worldwide. Sends a plain User-Agent (browser UAs get 403). Full descriptions. Postings labelled Director/Executive/VP/C-Level are dropped at the source (`skip_seniority`). |
 | `ats_companies` | none | ~2 min | 100–600 | ~150 Greenhouse/Lever/Ashby boards from `search.yaml`. Title must contain an ops phrase; location must be Canada/remote-not-elsewhere. Run `autojob companies verify` monthly. |
 | `jobicy` | none | 4 s | ~80 | Remote, `geo=canada`, by industry tag. |
-| `jooble` | free key (lifetime cap) | 1 s | ~60 | Only `max_queries` searches per run to conserve the cap. Snippets only. |
+| `jooble` | free key (lifetime cap) | 1 s | ~70 | Full 30-query master list per run, split across 2 geos. Swap keys with `scripts/jooble_key.sh`. Snippets only. |
 | `themuse` | none | 1 s | ~60 | Filtered to entry/mid levels; includes non-Canadian remote roles the LLM then skips. |
 | `weworkremotely` | none | 1 s | ~50 | Category RSS feeds. Mostly senior/US; prefilter handles most. |
 | `remoteok` | none | 1 s | ~30 | Single public feed filtered by tag. |

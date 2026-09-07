@@ -26,7 +26,8 @@ def fetch(settings: Settings) -> list[RawJob]:
     out: list[RawJob] = []
     seen: set[str] = set()
     for p in passes:
-        for term in settings.source_queries(NAME)[: int(p.get("max_queries", 6))]:
+        off = int(p.get("query_offset", 0))
+        for term in settings.source_queries(NAME)[off: off + int(p.get("max_queries", 6))]:
             try:
                 data = post_json(
                     f"https://jooble.org/api/{key}",
