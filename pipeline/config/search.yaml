@@ -534,10 +534,10 @@ sources:
     results_per_page: 50
     max_days_old: 7
   jooble:                      # free key, 500 requests LIFETIME (not monthly — verified with Jooble docs)
-    enabled: true
-    passes:                    # 2026-09-08 "both": still 6 requests/run total, split across geos
-      - { location: "Vancouver, BC", radius_km: 50, max_queries: 3 }
-      - { location: Canada, max_queries: 3 }   # API has no remote filter — non-remote rows die in the prefilter
+    enabled: true               # keys are free & swappable (scripts/jooble_key.sh set <KEY>) — no reason to ration
+    passes:                    # 2026-09-06: 6→30 requests/run, full 30-query master list, split across geos (~60/day → key dead in ~1wk)
+      - { location: "Vancouver, BC", radius_km: 50, max_queries: 15 }
+      - { location: Canada, query_offset: 15, max_queries: 15 }   # API has no remote filter — non-remote rows die in the prefilter
   boards:                      # LinkedIn + Indeed (+ ZipRecruiter, Glassdoor) via python-jobspy (no key)
     enabled: true
     sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
@@ -548,10 +548,10 @@ sources:
       - location: "Vancouver, BC"
       - location: "Canada"     # keeps only remote-flagged rows (or "remote" in the location string) so
         remote_only: true      # Toronto/Calgary on-site never costs a scrape or LLM call
-        max_queries: 12        # first 12 master queries (best volume-to-fit)
+        max_queries: 28        # 2026-09-06: full master list (was 12 — 16 queries never ran on the Canada pass)
         results_per_query: 20
         linkedin_fetch_description: false   # skip LinkedIn's slow per-job fetch; survivors get scraped post-prefilter
-    max_queries: 20            # raised from 10 on 2026-09-02 so the whole list rotates in (city pass)
+    max_queries: 28            # 2026-09-06: 28-query master list — at 20, the 8 supply-chain queries never ran
   jobbank:                     # Government of Canada Job Bank (HTML)
     enabled: false              # dead 2026-09-07: 43 jobs / 0 queued in 4 days
     location: "Vancouver, BC"
@@ -576,6 +576,10 @@ sources:
       - { suffix: "site:wellfound.com/jobs (Vancouver OR Canada)", queries: default }
       # T-Net (bctechnology.com) direct fetch is Cloudflare-walled; this is the documented fallback (1 credit/query)
       - { suffix: "site:bctechnology.com", queries: default }
+      # 2026-09-07 point-3 additions: Canadian boards the ATS/company sweeps miss
+      - { suffix: "site:jobillico.com (Vancouver OR Canada)", queries: default }
+      - { suffix: "(site:ca.talent.com OR site:talent.com) (Vancouver OR Canada)", queries: default }
+      - { suffix: "site:bcjobs.ca Vancouver", queries: default }
       - { suffix: "Vancouver", queries: default }
       - { suffix: "remote Canada", queries: default }
 
@@ -662,6 +666,12 @@ sources:
       - { tenant: agecare, wd: wd10, site: AgeCare_Careers_External, name: AgeCare }
       - { tenant: navcanada, wd: wd10, site: NAV_Careers, name: "NAV CANADA" }
       - { tenant: churchdwight, wd: wd1, site: chdcanadacareers, name: "Church & Dwight Canada" }
+      # 2026-09-07 point-2 pass (serper discovery + API/location-verified). Note: BC health authorities,
+      # SFU/UVic/BCIT, ICBC, BC Hydro, WorkSafeBC etc. are NOT on Workday (probed — SuccessFactors/Dayforce/
+      # custom sites instead); eluta + serper site: steps remain the coverage for those.
+      - { tenant: capilanou, wd: wd10, site: Capilano_University_External_Career_Site, name: "Capilano University" }
+      - { tenant: bdc, wd: wd10, site: bdc_careers, name: "Business Development Bank of Canada" }
+      - { tenant: hubinternational, wd: wd1, site: hubinternational, name: "Hub International" }
 
   # ---- Eluta.ca — Canadian aggregator, Vancouver radius (no key) ------------
   # Job pages are bot-walled, so these are scored from the search snippet only (low confidence). Kept because it
