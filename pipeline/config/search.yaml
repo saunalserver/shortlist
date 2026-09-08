@@ -54,15 +54,25 @@ scoring:
   max_llm_calls_per_run: 1000  # hard safety cap (raised 2026-09-07: free OpenRouter budget is 1,000/day, ~130 used)
   max_scrapes_per_run: 600    # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
+  # 2026-09-09: FREE-FIRST per owner (was paid-first on 09-08 after the free pool flaked). All models
+  # below live-tested TODAY through llm.py itself (json_object mode on) - supported_parameters alone
+  # lies: ling-*-flash 400 on response_format, laguna-xs provider-429s. Free quota on this key =
+  # 1000 req/day (~130 per run -> normal days cost $0). Paid fallback nemotron-3.5-lightning: 0.6s,
+  # $0.08/$0.20 per M tok = ~2.5x cheaper AND faster than gemini-2.5-flash-lite ($0.10/$0.40).
+  # gemma-4-31b:free was pruned 09-08. Re-test through llm.py before swapping models.
   models:
-    - { name: minimax/minimax-m2.7:free,              rpm: 20 }  # scorer: fast (~13s), valid JSON, 82.9% instr-following
-    - { name: nvidia/nemotron-3-super-120b-a12b:free,  rpm: 20 }  # scorer: 5/5 schema conformance, 100% data extraction
-    - { name: z-ai/glm-5.2:free,                       rpm: 20 }  # smartest open model; free pool crowded at peak hours
-    - { name: openrouter/free,                         rpm: 20 }  # auto-router backstop: wherever free capacity exists
+    - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: scorer, 1.0s, json-ok
+    - { name: nex-agi/nex-n2.5-mini:free,             rpm: 20 }  # FREE: scorer, 1.4s, json-ok
+    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best judgment, 8s
+    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: scorer, 6s
+    - { name: openrouter/free,                        rpm: 20 }  # FREE auto-router backstop
+    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID ~$0.06/run: only when free quota exhausted
   docs_models:
-    - { name: minimax/minimax-m3:free,                 rpm: 20 }  # docs: LMArena 1445, flagship writing
-    - { name: z-ai/glm-5.2:free,                       rpm: 20 }  # docs: highest intelligence, strong prose
-    - { name: openrouter/free,                         rpm: 20 }  # backstop
+    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best prose in the pool
+    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: docs fallback
+    - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: docs fallback
+    - { name: openrouter/free,                        rpm: 20 }  # FREE backstop
+    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID fallback when free quota gone
 
 # Shortlisted jobs you have not acted on are retired automatically (status "expired") when they are
 # too old to still be open, or when their page says the posting is gone. Runs at the start of each run
