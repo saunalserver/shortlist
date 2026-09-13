@@ -49,24 +49,27 @@ queries:
   # "automation specialist" (in the Lower Mainland this is PLC / controls / building automation work).
 
 scoring:
-  min_score_to_queue: 6        # jobs at/above this become "queued" for your review
+  min_score_to_queue: 7        # 2026-09-12: 6→7 — 0 applies ever at ≤6, queue was 60% unread 6s. Digest is threshold-driven, so it tightens too.
   # Docs are generated on demand from the dashboard only — no auto-generation (autodoc dropped 2026-09-07).
   max_llm_calls_per_run: 1000  # hard safety cap (raised 2026-09-07: free OpenRouter budget is 1,000/day, ~130 used)
   max_scrapes_per_run: 600    # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
-  # 2026-09-09: FREE-FIRST per owner (was paid-first on 09-08 after the free pool flaked). All models
-  # below live-tested TODAY through llm.py itself (json_object mode on) - supported_parameters alone
-  # lies: ling-*-flash 400 on response_format, laguna-xs provider-429s. Free quota on this key =
-  # 1000 req/day (~130 per run -> normal days cost $0). Paid fallback nemotron-3.5-lightning: 0.6s,
-  # $0.08/$0.20 per M tok = ~2.5x cheaper AND faster than gemini-2.5-flash-lite ($0.10/$0.40).
-  # gemma-4-31b:free was pruned 09-08. Re-test through llm.py before swapping models.
+  # 2026-09-13: QUALITY-FIRST per owner — free models ordered best→worst judgment, slow is fine
+  # (runs are 2×/day). Free tier rotates: minimax-m2.7/m3 and glm-5.2 were PULLED from OpenRouter
+  # (gone from catalog 09-13 — that's why they left the chain, not a quality choice). All models
+  # below live-tested TODAY through llm.py (json mode, real scorer prompt); inkling:free 403s (dropped).
+  # Every model gets called in list order until provider 429s bench it 90s — the best model absorbs
+  # ~all calls, next-best catches overflow. Free quota = 1000 req/day account-wide (~130-280/run).
+  # Re-test through llm.py (`venv/bin/python scripts/test_models.py`) before swapping models.
   models:
-    - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: scorer, 1.0s, json-ok
-    - { name: nex-agi/nex-n2.5-mini:free,             rpm: 20 }  # FREE: scorer, 1.4s, json-ok
-    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best judgment, 8s
-    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: scorer, 6s
+    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B flagship, best judgment, 8-23s
+    - { name: nex-agi/nex-n2.5-pro:free,             rpm: 20 }  # FREE: pro tier, top score in test, ~39s
+    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: solid judgment, ~46s
+    - { name: nex-agi/nex-n2.5-mini:free,             rpm: 20 }  # FREE: proven workhorse (928 scores), 9s
+    - { name: nvidia/nemotron-3.5-lightning:free,     rpm: 20 }  # FREE variant of the paid fallback
+    - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: fast, pool saturates often
     - { name: openrouter/free,                        rpm: 20 }  # FREE auto-router backstop
-    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID ~$0.06/run: only when free quota exhausted
+    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID ~$0.06/run: only when the 1000/day free quota is gone
   docs_models:
     - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best prose in the pool
     - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: docs fallback
