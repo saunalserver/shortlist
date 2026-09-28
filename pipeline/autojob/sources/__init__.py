@@ -25,6 +25,16 @@ SOURCE_NAMES = [
     "yc",
     "amazon",
     "hn",
+    # 2026-09-28 sourcing expansion (France/EU remote + Canada)
+    "workable_search",
+    "wttj",
+    "successfactors",
+    "getro",
+    "remoterocketship",
+    "workingnomads",
+    "gcjobs",
+    "bcps",
+    "apec",
 ]
 
 

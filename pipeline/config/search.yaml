@@ -45,6 +45,12 @@ queries:
   - procurement specialist
   - logistics coordinator
   - vendor operations
+  # 2026-09-28: titles the new sources showed converting
+  - implementation consultant
+  - marketing operations
+  - product operations
+  - support operations
+  - sales operations analyst
   # Dropped 2026-09-02: "workflow automation" (a skill, not a title — kept in the career-page title filters),
   # "automation specialist" (in the Lower Mainland this is PLC / controls / building automation work).
 
@@ -90,6 +96,10 @@ prefilter:
   # Titles containing one of these are never dropped by the title rules below ("chief" and "staff" are
   # exclusion words, yet "Chief of Staff" is a target role — every such posting was being thrown away).
   title_allow_phrases:
+    - chef de projet              # 2026-09-28: French for project manager ("chef" is an excluded word)
+    - cheffe de projet
+    - chef·fe de projet
+    - operations executive        # UK/EU junior title ("executive" is an excluded word)
     - chief of staff
   title_exclude_words:            # whole-word match, case-insensitive
     - senior
@@ -264,7 +274,57 @@ prefilter:
     - trades
     - civil
     - nursing
+    # French-language noise (added 2026-09-28 with the France/EU sources). "Chargé(e) d'opération(s)" in
+    # France is mostly a construction/public-works project manager; bare "opérations" pulls in "opérateur".
+    - bâtiment
+    - batiment
+    - travaux
+    - réhabilitation
+    - moex
+    - immobilier
+    - btp
+    - vrd
+    - opérateur
+    - operateur
+    - opératrice
+    - technicien
+    - technicienne
+    - stagiaire
+    - alternance
+    - alternant
+    - alternante
+    - apprenti
+    - apprentie
+    - chauffeur
+    - vendeur
+    - vendeuse
+    - infirmier
+    - infirmière
+    - indépendant
   title_exclude_phrases:          # substring match, case-insensitive
+    - "(stage)"
+    - "stage h/f"
+    # market-bound roles (a residency rule in the title): user only wants jobs doable from Vancouver
+    - german speaking
+    - german-speaking
+    - dutch speaking
+    - italian speaking
+    - spanish speaking
+    - portuguese speaking
+    - polish speaking
+    - nordic
+    - (dach)
+    - " dach"
+    - benelux
+    - "europe - remote"
+    - "(europe"
+    - "remote europe"
+    - "emea)"
+    - ", emea"
+    - "- emea"
+    - génie civil
+    - maîtrise d'œuvre
+    - maitrise d'oeuvre
     - software engineer
     - software developer
     - data scientist
@@ -374,7 +434,8 @@ prefilter:
     - leave replacement
     - temp-to-perm
   employment_type_exclude: [internship, intern, co-op, coop, volunteer, part-time, "part time", temporary, seasonal, casual,
-                            contract, contractor, freelance, fixed-term, "fixed term", temp]   # full-time permanent only
+                            contract, contractor, freelance, fixed-term, "fixed term", temp,
+                            cdd, intérim, interim, stage, alternance, apprentissage, "temps partiel"]   # FR 2026-09-28   # full-time permanent only
   max_posted_age_days: 30         # a posting already older than this when first seen is not worth an LLM call
                                   # (remote boards keep listings up for months; matches expiry.posted_max_days)
   location:
@@ -415,6 +476,17 @@ prefilter:
       - "(yt)"
       - "(nt)"
       - "(nu)"
+      # 2026-09-28: province names + GTA suburbs, last so a named city wins the reason ("Richmond Hill, ON" used to pass as Richmond, BC)
+      - ontario
+      - alberta
+      - quebec
+      - richmond hill
+      - markham
+      - vaughan
+      - oakville
+      - brampton
+      - north york
+      - scarborough
     deny_us: true
     deny_us_cities:              # whole-word match; only used when no Canadian place is named
       - san francisco
@@ -468,6 +540,13 @@ prefilter:
       - ann arbor
       - reno
       - portland
+    # 2026-09-28 user: remote jobs from France/Europe are welcome if doable from Vancouver; when the posting
+    # can't tell, keep it. So a REMOTE job naming only these (office location, most likely) passes rule 3;
+    # on-site ones are still dropped, and region tags (europe/emea) stay dropped — those ARE residency rules.
+    remote_ok_countries: [france, paris, united kingdom, uk, london, ireland, germany, berlin, spain, portugal,
+                          netherlands, belgium, italy, switzerland, austria, sweden, denmark, norway, finland,
+                          poland, czech, lyon, marseille, toulouse, bordeaux, lille, nantes, montpellier, dublin,
+                          amsterdam, madrid, barcelona, lisbon, munich, brussels]
     deny_countries:              # regions/countries a "remote" job can be pinned to
       - europe
       - emea
@@ -531,7 +610,49 @@ prefilter:
       - new delhi
       - bangalore
       - london
+      - serbia
+      - croatia
+      - montenegro
+      - bosnia
+      - albania
+      - north macedonia
+      - kosovo
+      - slovenia
+      - slovakia
+      - moldova
+      - bulgaria
+      - iceland
+      - estonia
+      - latvia
+      - lithuania
+      - luxembourg
+      - malta
+      - cyprus
+      - belarus
+      - russia
+      - georgia
+      - armenia
+      - sofia
+      - belgrade
+      - bucharest
+      - warsaw
+      - prague
+      - budapest
       - paris
+      - lyon
+      - marseille
+      - toulouse
+      - bordeaux
+      - lille
+      - nantes
+      - montpellier
+      - dublin
+      - amsterdam
+      - madrid
+      - barcelona
+      - lisbon
+      - munich
+      - brussels
       - berlin
 
 sources:
@@ -553,7 +674,7 @@ sources:
       - { location: Canada, query_offset: 15, max_queries: 15 }   # API has no remote filter — non-remote rows die in the prefilter
   boards:                      # LinkedIn + Indeed (+ ZipRecruiter, Glassdoor) via python-jobspy (no key)
     enabled: true
-    sites: [linkedin, indeed, zip_recruiter, glassdoor]   # zip/glassdoor returned 0 from this IP on 2026-09-07 — audit in 2 weeks
+    sites: [linkedin, indeed]   # 2026-09-28: zip_recruiter (Cloudflare 403) + glassdoor (400 "location not parsed") dropped — 0 rows in 3 weeks
     country_indeed: canada
     results_per_query: 35      # 2026-09-06: 25→35 for deeper per-query sweep toward the 1000/day goal (Indeed paginates fine; LinkedIn caps itself ~25)
     hours_old: 120            # 5 days: a posting missed one day (rate limit, cap) gets another chance
@@ -561,10 +682,13 @@ sources:
       - location: "Vancouver, BC"
       - location: "Canada"     # keeps only remote-flagged rows (or "remote" in the location string) so
         remote_only: true      # Toronto/Calgary on-site never costs a scrape or LLM call
-        max_queries: 28        # 2026-09-06: full master list (was 12 — 16 queries never ran on the Canada pass)
-        results_per_query: 20
+        max_queries: 40        # 2026-09-28: whole master list (28 left the last queries unrun)
+        results_per_query: 35  # 2026-09-28: 20→35 (review: supply, not caps, is the limit)
         linkedin_fetch_description: false   # skip LinkedIn's slow per-job fetch; survivors get scraped post-prefilter
-    max_queries: 28            # 2026-09-06: 28-query master list — at 20, the 8 supply-chain queries never ran
+      # France remote pass (Indeed FR, location "Télétravail", country_indeed france, remote_only, own `queries:`)
+      # tried 2026-09-28 and removed: 23 rows → 9 past prefilter → 0 relevant (itinerant sales, agencies).
+      # boards.py still supports per-pass `queries` / `is_remote` if it's worth retrying.
+    max_queries: 40            # 2026-09-28: whole master list (was 28 — the last queries never ran)
   jobbank:                     # Government of Canada Job Bank (HTML)
     enabled: false              # dead 2026-09-07: 43 jobs / 0 queued in 4 days
     location: "Vancouver, BC"
@@ -587,14 +711,10 @@ sources:
       - { suffix: "(site:apply.workable.com OR site:jobs.smartrecruiters.com) (Vancouver OR Canada)", queries: default }
       - { suffix: "site:myworkdayjobs.com Vancouver", queries: default }
       - { suffix: "site:wellfound.com/jobs (Vancouver OR Canada)", queries: default }
-      # T-Net (bctechnology.com) direct fetch is Cloudflare-walled; this is the documented fallback (1 credit/query)
-      - { suffix: "site:bctechnology.com", queries: default }
-      # 2026-09-07 point-3 additions: Canadian boards the ATS/company sweeps miss
-      - { suffix: "site:jobillico.com (Vancouver OR Canada)", queries: default }
-      - { suffix: "(site:ca.talent.com OR site:talent.com) (Vancouver OR Canada)", queries: default }
-      - { suffix: "site:bcjobs.ca Vancouver", queries: default }
-      - { suffix: "Vancouver", queries: default }
-      - { suffix: "remote Canada", queries: default }
+      # 2026-09-28: Europe-remote sweep of the same ATS domains (user: remote France/EU roles welcome)
+      - { suffix: "(site:jobs.lever.co OR site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com) remote (France OR Europe OR EMEA)", queries: default }
+      # Removed 2026-09-28 (audit: 0 rows ever, or 1 job ≥7 in 3 weeks — a third of every rotation wasted):
+      # site:bctechnology.com, site:jobillico.com, site:talent.com, site:bcjobs.ca, bare "Vancouver", "remote Canada".
 
   # ---- Remote-first boards (no key) ---------------------------------------
   remotive:
@@ -634,11 +754,197 @@ sources:
                      analytics, "data analyst", success, support, partnerships, enablement, implementation]
   himalayas:
     enabled: true
+    # locationRestrictions is an explicit residency list. User rule 2026-09-28: only remote jobs doable from
+    # Vancouver — so EU country passes (FR/DE/GB… lists without Canada) add nothing; tried and reverted.
+    # CA pass = lists that include Canada; worldwide pass = no restriction. exclude_worldwide keeps them distinct.
     countries: [CA]
+    exclude_worldwide: true
     worldwide: true
+    params: { sort: recent, seniority: "Entry-level,Mid-level", employment_type: "Full Time" }
+    max_queries: 40            # 2 passes now (CA + worldwide), 10 s total — run the whole master list
     pages_per_query: 2
     results_per_page: 20
     skip_seniority: [Director, Executive, VP, C-Level]   # Himalayas' own label; "Senior" is left to the title rules
+
+  # ---- 2026-09-28 sourcing expansion (see docs/RESEARCH-sources-*-2026-09-28.md) ----
+  workable_search:            # jobs.workable.com cross-company search (every Workable employer, no key)
+    enabled: true
+    day_range: 7               # server-side "posted in the last N days" (sort is ignored by the API)
+    max_queries: 16            # first N of the master query list, per pass
+    max_pages: 3               # 20 rows/page; only the Europe pass ever needs more than one
+    pause_s: 0.8               # undocumented endpoint — stay ~1 req/s
+    passes:
+      - { location: Vancouver, country: Canada }                 # any workplace (on-site/hybrid/remote)
+      - { location: Canada, workplace: remote }
+      # Europe/France remote passes removed 2026-09-28 after review: 18 of 26 rows, ~all junk (agency listings,
+      # Serbian/Romanian language-support roles). Re-add as { location: Europe, workplace: remote, europe_only: true }.
+    title_keywords: [operations, " ops", "ops ", coordinator, analyst, associate, specialist, generalist,
+                     "chief of staff", "project", "program", enablement, automation, workflow, implementation,
+                     onboarding, strategy, "process", planning, solutions, success, partnerships, reporting,
+                     "supply chain", procurement, logistics, revops, bizops]
+  wttj:                       # Welcome to the Jungle public Algolia index (FR full-remote + Canada offices)
+    enabled: true
+    max_days_old: 7            # published_at filter (server-side)
+    max_experience_years: 3    # drop postings whose minimum experience is above this (missing = kept)
+    hits_per_page: 200
+    max_pages: 3
+    # "*" = sweep everything the pass filters allow, then keep titles matching title_keywords.
+    # Full-remote France is ~130 postings/week, so one sweep per pass beats many keyword queries.
+    queries: ["*"]
+    passes:
+      - name: france-remote
+        filters: "remote:fulltime AND contract_type:full_time AND offices.country_code:FR"
+        country_codes: [FR]
+      # europe-remote pass (BE/ES/DE/GB/NL/LU/CH/PT/IT/IE offices) removed 2026-09-28 after review: mostly
+      # German-/DACH-/SEUR-speaking roles bound to that market.
+      - name: canada-remote
+        filters: "remote:fulltime AND contract_type:full_time AND offices.country_code:CA"
+        country_codes: [CA]
+      - name: vancouver              # any remote mode
+        filters: "contract_type:full_time AND offices.country_code:CA AND (offices.city:Vancouver OR offices.city:Burnaby OR offices.city:Richmond OR offices.city:Surrey OR offices.city:\"North Vancouver\" OR offices.city:\"New Westminster\")"
+        office_cities: [Vancouver, Burnaby, Richmond, Surrey, North Vancouver, New Westminster]
+        country_codes: [CA]
+    title_keywords: [operations, opérations, " ops", "ops ", revops, bizops, "growth", coordinator, coordinateur,
+                     coordinatrice, analyst, analyste, specialist, spécialiste, "chief of staff", "project", projet,
+                     "program", automation, automatisation, "no-code", "low-code", workflow, implementation,
+                     onboarding, strategy, stratégie, "process", processus, planning, solutions, "customer success",
+                     partnerships, partenariats, reporting, "business analyst", "supply chain", procurement,
+                     achats, logistique, logistics, "chargé de projet", "chargée de projet", "responsable des opérations",
+                     "office manager"]
+  successfactors:             # SAP SuccessFactors career-site RSS feeds (ICBC, BCLC, FortisBC, TELUS…)
+    enabled: true
+    # GET <url>/services/rss/job/?keywords=(<kw>) — ≤20 items per keyword, full descriptions inline.
+    # The keyword also matches location text, so "vancouver"/"remote" sweep the national employers.
+    # Kept: title matches workday.title_keywords (override with title_keywords:) AND Vancouver area
+    # or remote-in-Canada. Add an employer: its careers host must answer /services/rss/job/.
+    keywords: [operations, coordinator, analyst, specialist, associate, vancouver, remote]
+    delay_s: 0.5
+    tenants:
+      - { name: ICBC, url: "https://careers.icbc.com" }
+      - { name: BCLC, url: "https://careers.bclc.com" }
+      - { name: FortisBC, url: "https://careers.fortisbc.com" }
+      - { name: TELUS, url: "https://careers.telus.com" }
+      - { name: "Coast Capital Savings", url: "https://careers.coastcapitalsavings.com" }
+      - { name: "City of Vancouver", url: "https://jobs.vancouver.ca" }
+      # 2026-09-28 probe: national employers with Vancouver/remote-Canada postings
+      - { name: "Teck Resources", url: "https://jobs.teck.com" }
+      - { name: Scotiabank, url: "https://jobs.scotiabank.com" }
+      - { name: Rogers, url: "https://jobs.rogers.com" }
+      - { name: CN, url: "https://careers.cn.ca" }
+      # Not SuccessFactors / unreachable (2026-09-28): BC Hydro, Vancity, BC Housing, Metro Vancouver,
+      # WorkSafeBC (careers.worksafebc.com down), TransLink (PeopleSoft), VCH (403).
+  getro:                      # Getro-powered VC portfolio job boards (EU + Canada funds)
+    enabled: true
+    # POST api.getro.com/api/v2/collections/<id>/search/jobs. Board id = __NEXT_DATA__ network.id on <host>/jobs.
+    # mode remote: remote jobs open to a Vancouver resident — locations empty/plain "Remote" or naming
+    #   Canada/North America/Americas/worldwide. Remote pinned to Europe/a country = residency → dropped.
+    # mode canada: Vancouver-area any work mode + remote located in Canada.
+    # No descriptions: survivors are scraped after the prefilter.
+    queries: [operations, coordinator, analyst, specialist]
+    seniority: [entry_level, associate, mid_senior]   # server-side; drops senior/director/VP
+    max_age_days: 14
+    pages_per_query: 2          # 20 rows per page
+    delay_s: 0.4
+    boards:
+      # Canada funds
+      - { name: "Real Ventures", id: 166, host: jobs.realventures.com, mode: canada }
+      - { name: Inovia, id: 1201, host: careers.inovia.vc, mode: canada }
+      - { name: Georgian, id: 14282, host: careers.georgian.io, mode: canada }
+      # EU funds (remote-only; most EU-remote rows are residency-pinned and dropped)
+      - { name: Atomico, id: 36986, host: careers.atomico.com, mode: remote }
+      - { name: "Point Nine", id: 1680, host: jobs.pointnine.com, mode: remote }
+      - { name: "HV Capital", id: 234, host: jobs.hvcapital.com, mode: remote }
+      - { name: MMC, id: 2303, host: jobs.mmc.vc, mode: remote }
+      - { name: Speedinvest, id: 947, host: careers.speedinvest.com, mode: remote }
+      - { name: Earlybird, id: 617, host: jobs.earlybird.com, mode: remote }
+      - { name: Daphni, id: 3359, host: talent.daphni.com, mode: remote }
+      # Not Getro / not found 2026-09-28: BDC, Panache, Version One, Relay, Radical, Portage, OMERS,
+      # Golden Ventures (Consider), Accel (403).
+  remoterocketship:           # Remote Rocketship title pages (embedded JSON)
+    enabled: true
+    # One page per region × slug (20 newest each; page 2 is ignored by the site). Only rows whose allowed
+    # places include Canada / North America / Americas / worldwide survive (owner policy 2026-09-28) —
+    # most Europe rows are "remote within <one EU country>" and die at source; Europe pages stay for the
+    # few that allow worldwide. canada/jobs/<slug> keeps the title filter only for the 5 slugs below (the
+    # others fall back to the generic 11k listing, skipped via max_page_total); north-america pages are
+    # US-only in practice. ~22 requests/run: the site sells a premium tier, so keep this list short.
+    # 2026-09-28 live: 12 Europe pages → 0 of 40 kept rows. Trimmed to the 3 highest-volume slugs.
+    regions: [europe]
+    title_slugs: [operations-specialist, operations-coordinator, revenue-operations]
+    extra_pages: [canada/jobs/revenue-operations, canada/jobs/business-operations, canada/jobs/business-analyst,
+                  canada/jobs/implementation-specialist, canada/jobs/chief-of-staff,
+                  worldwide/jobs/operations-specialist, worldwide/jobs/operations-coordinator,
+                  worldwide/jobs/project-coordinator, worldwide/jobs/sales-operations,
+                  worldwide/jobs/operations-manager]
+    max_page_total: 3000
+    delay_s: 1.5
+  workingnomads:              # Working Nomads search endpoint (Europe / global remote)
+    enabled: true
+    # One POST per run: title phrase-match on the master query list, last `days` days. Rows are kept
+    # only when `locations` is empty or names Canada / North America / Americas / anywhere (owner
+    # policy 2026-09-28: Europe-only / EMEA-only is a residency restriction).
+    days: 7
+    size: 300
+    skip_experience_levels: [SENIOR_LEVEL]
+  gcjobs:                     # Government of Canada jobs (bilingual roles; citizens get preference)
+    enabled: true              # crawls all ~420 public postings (~21 pages) + detail pages of the kept ones
+    max_pages: 30
+    max_details_per_run: 60      # detail pages only open inside the session; un-fetched ones can't be scraped later
+    delay_s: 0.8
+    exclude_employers: ["canadian security intelligence service", "communications security establishment"]  # citizenship required
+    separate_employers_only: true   # 2026-09-28: skip core public service (PSEA s.39 citizen preference) — CMHC, BoC, CRA… stay
+    # kept when the location names one of these (Lower Mainland, national "Various Locations", telework)
+    locations: [vancouver, burnaby, surrey, "richmond (british", new westminster, coquitlam, "delta (british",
+                langley, various locations, telework, remote, virtual]
+    title_keywords: [operations, " ops", coordinator, analyst, officer, advisor, specialist, associate, program,
+                     project, planning, business, policy, administrator, "process", services, "data", performance,
+                     procurement, supply, logistics, "client", partnerships, bilingual, "chief of staff"]
+    title_exclude: [student, "phd", "master's", co-op, intern, casual, seasonal, "director", "director general",
+                    engineer, scientist, nurse, physician, lawyer, counsel, psychologist, social worker, technician,
+                    inspector, officer trainee, "police", "correctional officer", "fisheries officer", postdoctoral,
+                    "worker", medical, "firearms", technologist, fellow, "development opportunity", inventory,
+                    "term ", "acting", secondment, "pool"]
+    # separate employers not bound by PSEA s.39 citizen preference (snippet says which applies)
+    non_psea_employers: ["bank of canada", "canada mortgage and housing", "office of the superintendent of financial",
+                         "canadian commercial corporation", "canada revenue agency", "national research council",
+                         "parks canada", "library of parliament", "canadian food inspection",
+                         "export development canada", "business development bank", "canada post",
+                         "house of commons", "senate of canada"]
+  bcps:                       # BC Public Service postings (hrsmart)
+    enabled: true              # one request returns every open posting (~80); Lower Mainland + title match kept
+    max_pages: 3
+    local_cities: [vancouver, burnaby, richmond, surrey, coquitlam, new westminster, delta, langley, port moody,
+                   port coquitlam, north vancouver, west vancouver, white rock, maple ridge]
+    title_keywords: [operations, coordinator, analyst, officer, advisor, specialist, program, project, planning,
+                     business, policy, administrator, "process", "data", procurement, supply, logistics, "case manager",
+                     navigator, performance, "services"]
+    title_exclude: [intern, auxiliary, "temporary", clinician, "protection worker", nurse, psychologist, counsel,
+                    clerk, "store manager", "senior", engineer, "resource officer", "conservation officer",
+                    "probation officer", "crown counsel", "physician", "medical"]
+  apec:                       # APEC.fr (French cadres) — full-remote CDI only
+    enabled: false             # 2026-09-28 review: 6 rows/run, 0 relevant (temp agencies; ~300-char excerpts — detail
+                               # pages are DataDome-walled, so the residency rule can't fire). Code kept; flip to retry.              # typesTeletravail 20767 = "Télétravail total possible" (verified via APEC referential)
+    # "" sweeps every full-remote CDI posting newest-first (~500/week), paging until max_days_old; the
+    # search is full-text and loose, so the title filters do the work.
+    queries: [""]
+    results_per_page: 100
+    max_pages: 8
+    max_days_old: 7
+    delay_s: 1.0
+    title_keywords: [opération, operation, " ops", "ops ", revops, bizops, coordinat, analyste, analyst,
+                     "chef de projet", "chef de projets", "project manager", "project coordinator", automatisation,
+                     automation, "no-code", "low-code", process, processus, "supply chain", logistique, achats,
+                     procurement, "business analyst", revenue, growth, "sales ops", "chargé de mission",
+                     "chargée de mission", "office manager", "administration des ventes", planification, "customer success",
+                     onboarding, "data", reporting, "pmo", "product ops", "chief of staff", "bras droit"]
+    title_exclude: [travaux, bâtiment, batiment, réhabilitation, rehabilitation, moex, immobilier, btp, vrd,
+                    "génie civil", "genie civil", dessinateur, projeteur, électricité, electricite, cvc, plomberie,
+                    chantier, conducteur, technicien, "ingénieur commercial", désamiantage, "génie climatique",
+                    "espaces verts", directeur, directrice, "infrastructures", opérateur, operateur, opératrice,
+                    "chargé d'affaires", "chargée d'affaires", "chargé d'affaire", "courants faibles", "data center",
+                    devops, "développeur", developpeur, "cybersécurité", "cyber sécurité", mlops, "sage x3",
+                    "senior", "sénior", "expérimenté", "confirmé", "lead", paie, engineer, ingénieur, "cadre supérieur",
+                    souscripteur, "conception-réalisation", "comptab"]
 
   # ---- Vancouver employers on Workday (no key) ------------------------------
   # Workday's public job-board API: POST …/wday/cxs/<tenant>/<site>/jobs. Big local employers (UBC, Aritzia…)

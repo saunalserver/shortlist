@@ -8,7 +8,8 @@ Location logic (``prefilter.location`` in search.yaml), in order:
    also says "Canada" ("Toronto, Ontario, Canada" is Toronto, not Canada-wide).
 2. US-only markers, US states or US cities without any Canadian place name → drop. This now
    applies to remote jobs too ("Remote - Houston", "Chicago, IL, Flexible / Remote").
-3. A foreign country/region without a Canadian or global keyword → drop ("Remote - EMEA").
+3. A foreign country/region without a Canadian or global keyword → drop ("Remote - EMEA"), except a
+   remote job naming only European countries/cities in ``remote_ok_countries`` ("Remote — Paris, France").
 Empty locations always pass (the LLM judges from the description).
 """
 from __future__ import annotations
@@ -44,6 +45,12 @@ CANADA_MARKERS = ("canada", "canadian", "vancouver", "burnaby", "richmond", "sur
 # The candidate's commute area — a multi-city posting that names one of these is kept even if it names Toronto too.
 LOCAL_MARKERS = ("vancouver", "burnaby", "richmond", "surrey", "coquitlam", "new westminster", "langley", "delta",
                  "port moody", "maple ridge", "white rock", "lower mainland", "metro vancouver", "greater vancouver")
+def is_local(location: str) -> bool:
+    """Vancouver-area place named? ("Richmond Hill, ON" is not Richmond, BC.)"""
+    loc = (location or "").lower().replace("richmond hill", "")
+    return any(k in loc for k in LOCAL_MARKERS)
+
+
 GLOBAL_MARKERS = ("worldwide", "anywhere", "global", "americas", "north america", "international")
 REMOTE_MARKERS = ("remote", "anywhere", "worldwide", "work from home", "wfh", "télétravail", "distributed")
 
@@ -62,6 +69,21 @@ def _has_word(text: str, words: tuple[str, ...]) -> str | None:
     return m.group(0).lower() if m else None
 
 
+def _all_words(text: str, words: tuple[str, ...]) -> list[str]:
+    """Every whole-word hit, lower-cased with any plural suffix stripped back to the listed word."""
+    if not words:
+        return []
+    listed = {w.lower() for w in words}
+    out = []
+    for m in _word_regex(words).finditer(text):
+        w = m.group(0).lower()
+        for cand in (w, w[:-1], w[:-2]):
+            if cand in listed:
+                out.append(cand)
+                break
+    return out
+
+
 def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None = None) -> str | None:
     """Why a location rules the job out, or None. ``remote`` is the source's own flag."""
     loc = (location or "").lower().strip()
@@ -69,7 +91,7 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
         return None
     padded = f" {loc} "
     canada = any(k in padded for k in CANADA_MARKERS)
-    local = any(k in padded for k in LOCAL_MARKERS)
+    local = is_local(padded)
     says_remote = remote is True or any(k in padded for k in REMOTE_MARKERS)
     global_ok = any(k in padded for k in GLOBAL_MARKERS)
 
@@ -92,11 +114,18 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
         if m and m.group(1) in _US_STATES and m.group(1) not in _CA_PROVINCES:
             return "location: United States"
 
-    # 3. Pinned to another country/region.
+    # 3. Pinned to another country/region. A *remote* job naming only European countries/cities is kept
+    #    (remote_ok_countries): a bare "Remote — Paris, France" is usually the office, not a residency rule,
+    #    and the user wants undecidable remote jobs scored. Regions ("Remote - EMEA", "Europe") stay dropped:
+    #    they are the residency rule. Explicit country lists are enforced at source (Himalayas, RR, Getro…).
     if not canada and not global_ok:
-        country = _has_word(loc, tuple(loc_cfg.get("deny_countries", []) or []))
-        if country:
-            return f"location: {country}"
+        hits = _all_words(loc, tuple(loc_cfg.get("deny_countries", []) or []))
+        if hits:
+            ok = {c.lower() for c in loc_cfg.get("remote_ok_countries", []) or []}
+            partial = re.search(r"hybrid|hybride|partiel|partial|occasional|ponctuel", loc)
+            if says_remote and not partial and all(h in ok for h in hits):
+                return None
+            return f"location: {hits[0]}"
     return None
 
 

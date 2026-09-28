@@ -17,7 +17,7 @@ def job(**kw):
 def test_other_canadian_city_is_dropped_even_when_canada_is_named():
     assert location_reason("Toronto, Ontario, Canada", LOC) == "location: toronto"
     assert location_reason("Edmonton, Alberta, Canada", LOC) == "location: edmonton"
-    assert location_reason("Etobicoke, Ontario, Canada", LOC) is None   # not in deny list → LLM decides
+    assert location_reason("Etobicoke, Ontario, Canada", LOC) == "location: ontario"   # 2026-09-28: province names denied too
 
 
 def test_multi_city_posting_naming_vancouver_is_kept():

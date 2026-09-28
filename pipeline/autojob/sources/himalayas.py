@@ -18,12 +18,20 @@ HEADERS = {"User-Agent": "python-requests/2.32 autojob", "Accept": "application/
 
 def _query_defs(settings: Settings) -> list[dict]:
     cfg = settings.source(NAME)
+    # Server-side filters (sort=recent, seniority, employment_type) apply to every pass.
+    # exclude_worldwide stops a country pass from re-returning the same worldwide jobs —
+    # without it all country passes share one top-N; worldwide jobs come from their own pass.
+    common = {k: str(v) for k, v in (cfg.get("params") or {}).items()}
     defs: list[dict] = []
-    for q in settings.source_queries(NAME):
+    queries = settings.source_queries(NAME)[: int(cfg.get("max_queries", 999))]   # 10 passes × N queries
+    for q in queries:
         for country in cfg.get("countries", []) or []:
-            defs.append({"q": q, "country": country})
+            d = {**common, "q": q, "country": country}
+            if cfg.get("exclude_worldwide"):
+                d["exclude_worldwide"] = "true"
+            defs.append(d)
         if cfg.get("worldwide"):
-            defs.append({"q": q, "worldwide": "true"})
+            defs.append({**common, "q": q, "worldwide": "true"})
     return defs
 
 

@@ -32,7 +32,8 @@ def _passes(cfg: dict) -> list[dict]:
 def _is_remote(location: str, is_remote) -> bool:
     if _s(is_remote).lower() in ("true", "1", "yes"):
         return True
-    return "remote" in location.lower()
+    loc = location.lower()
+    return any(k in loc for k in ("remote", "télétravail", "teletravail", "home office"))
 
 
 def fetch(settings: Settings) -> list[RawJob]:
@@ -47,7 +48,8 @@ def fetch(settings: Settings) -> list[RawJob]:
     seen: set[str] = set()
     for pc in _passes(cfg):
         n_pass = 0
-        for term in settings.source_queries(NAME)[: int(pc.get("max_queries", 10))]:
+        terms = pc.get("queries") or settings.source_queries(NAME)   # a pass may bring its own list (France pass)
+        for term in terms[: int(pc.get("max_queries", 10))]:
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
@@ -58,6 +60,7 @@ def fetch(settings: Settings) -> list[RawJob]:
                         results_wanted=int(pc.get("results_per_query", 15)),
                         hours_old=int(pc.get("hours_old", 72)),
                         country_indeed=pc.get("country_indeed", "canada"),
+                        is_remote=bool(pc.get("is_remote", False)),   # jobspy's remote filter (LinkedIn f_WT=2); optional per pass
                         linkedin_fetch_description=bool(pc.get("linkedin_fetch_description", True)),
                         description_format="markdown",
                     )

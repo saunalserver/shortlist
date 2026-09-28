@@ -310,7 +310,9 @@ def insert_jobs(conn: sqlite3.Connection, jobs: Iterable[RawJob], run_id: int | 
         if conn.execute("SELECT 1 FROM seen_urls WHERE url = ?", (job.url,)).fetchone():
             dup_url += 1
             continue
-        fp = fingerprint(job.title, job.company)
+        # Government sources: titles repeat across ministries and company_key collapses "Ministry of X" to
+        # "ministry of" — title|company would silently drop distinct postings. URL dedupe still applies.
+        fp = None if (job.extra or {}).get("no_fingerprint") else fingerprint(job.title, job.company)
         if fp and conn.execute("SELECT 1 FROM jobs WHERE fingerprint = ? LIMIT 1", (fp,)).fetchone():
             dup_fp += 1
             conn.execute("INSERT OR IGNORE INTO seen_urls (url, first_seen) VALUES (?, ?)", (job.url, now))

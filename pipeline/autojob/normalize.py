@@ -39,6 +39,10 @@ def snippet_of(text: str, limit: int = 220) -> str:
     return one_line[:limit]
 
 
+# Hosts whose bare domain redirects to the homepage (path lost) — the "www." must stay.
+_KEEP_WWW = {"www.apec.fr"}
+
+
 def canonical_url(url: str) -> str:
     """Strip tracking parameters and normalise host so the same posting dedupes across sources."""
     url = (url or "").strip()
@@ -48,7 +52,7 @@ def canonical_url(url: str) -> str:
         url = "https://" + url
     parts = urlsplit(url)
     host = parts.netloc.lower()
-    if host.startswith("www."):
+    if host.startswith("www.") and host not in _KEEP_WWW:
         host = host[4:]
     path = re.sub(r"/+$", "", parts.path) or "/"
 

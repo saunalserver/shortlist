@@ -29,6 +29,16 @@ B. LOCATION DISQUALIFIERS
      in Africa, Asia, the Middle East, Latin America, or Oceania (e.g. "Remote — Lagos",
      a Singapore-based startup hiring remotely). Remote roles based in Canada, the US,
      France or elsewhere in Europe are fine — the candidate is French and welcomes them.
+   - Remote role that EXPLICITLY requires living in a country other than Canada
+     ("must be based in France", "remote within Germany", "UK residents only", "you must
+     reside in the EU", "office attendance in Paris twice a month"). The candidate lives
+     in Vancouver and can only take remote work he can do from there. EU work
+     authorization alone is NOT a residency requirement — he is a French citizen.
+     If the posting is silent on where you must live, do NOT disqualify: score it
+     normally (a European employer's remote role is welcome).
+   - Remote role that requires working European business hours ("CET hours", "must
+     overlap 9–5 Paris time") — that is ~midnight–8am in Vancouver. A few hours of
+     overlap requested is fine; full European hours is a disqualifier.
    - Compensation listed in USD with no Canadian employment entity.
    - US ZIP codes or US state names in the location field of an on-site role.
    - Roles requiring Canadian citizenship or permanent residency when the
@@ -174,6 +184,12 @@ Example 8 — "AI Operations Associate", 100% remote, employer based in Singapor
 Example 9 — Jobgether listing, "Product Owner for an undisclosed partner company"
 → skip=true, fit_score=2. The actual employer is hidden — aggregator listing, not
    a real posting (Step 1.F), even though the role description itself looks fine.
+
+Example 10 — "Revenue Operations Analyst", full remote, Paris-based SaaS, "vous
+   résidez en France" in the requirements
+→ skip=true, fit_score=2. Explicit French residency; the candidate lives in Vancouver
+   (Step 1.B). The same posting saying only "100% remote" with no residency line
+   would be scored normally.
 
 ═══════════════════════════════════════════════════════════════════════
 
