@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.0 — 2026-09-28 (sourcing expansion: France/EU remote + Canada)
+
+- **9 new sources**, all without keys: workable_search, wttj, successfactors, getro, remoterocketship,
+  workingnomads, gcjobs, bcps, apec (disabled). See `SOURCES.md` and `RESEARCH-sources-*-2026-09-28.md`.
+- **Location policy** (owner): only remote jobs doable from Vancouver; a posting that doesn't say where you must
+  live is kept. Prefilter: remote + only western-European countries/cities passes (`remote_ok_countries`);
+  regions (EMEA/Europe), partial/hybrid remote and unlisted countries still drop. Scorer: explicit non-Canada
+  residency or full European working hours = disqualifier. Profile says so too.
+- French title/contract filters (bâtiment, travaux, opérateur, alternance, CDD, stage…); `chef de projet` and
+  `operations executive` allowed; market-bound language titles ("German speaking", DACH, "(Europe - Remote)")
+  dropped. Province names + GTA suburbs denied on-site ("Richmond Hill, ON" had been matching Richmond, BC).
+- More supply: boards run the whole query list (+5 queries), Canada pass 35/query; Himalayas server-side filters.
+- Serper: new key; 6 plan steps that never produced a row removed; 1 Europe-remote ATS step added.
+- Fixes: government sources skip title|company dedupe (every ministry collapsed to "ministry of"),
+  `www.apec.fr` kept by `canonical_url`, gcjobs session retry. systemd timeout 6h→8h (local drop-in).
+
 ## 2.1.2 — 2026-09-02 (resume tailoring rewritten)
 
 - The model no longer edits resume LaTeX. On the first live test with the new CV it had added "Microsoft Office" and "AI tool integration", dropped the $100K/month figure and rewritten bullets into different claims — despite a prompt forbidding all of it. Now the template is parsed into summary + bullets per section; the model returns a bullet order (and at most one drop per section) plus a summary that is rejected if it cites a number or tool absent from the template. Overflow is handled by dropping trailing bullets, no second model call.
