@@ -370,8 +370,13 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
             D.set_pipeline_state(conn, current_phase="notifying")
             conn.commit()
             run_row = dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone())
-            # everything shortlisted by this run's scoring — including carry-over jobs fetched by an earlier run
-            send_digest(settings, run_row, D.queued_since(conn, started_at))
+            # Since the last run that FINISHED: shortlists from runs killed or aborted mid-scoring
+            # (systemd timeout, user abort) carry into the next digest instead of vanishing.
+            prev = conn.execute(
+                "SELECT started_at FROM runs WHERE status = 'done' AND id < ? ORDER BY id DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            send_digest(settings, run_row, D.queued_since(conn, prev["started_at"] if prev else started_at))
         D.set_pipeline_state(conn, status="idle", current_phase="done")
     except Aborted:
         summary.status = "aborted"

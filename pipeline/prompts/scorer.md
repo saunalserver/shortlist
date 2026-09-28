@@ -25,6 +25,10 @@ A. SENIORITY DISQUALIFIERS
 B. LOCATION DISQUALIFIERS
    - On-site role located outside the candidate's metro area (see profile).
    - "Remote within US" / "US-based only" / "Must reside in [US state]".
+   - Remote role whose employer / payroll entity / required working timezone is based
+     in Africa, Asia, the Middle East, Latin America, or Oceania (e.g. "Remote — Lagos",
+     a Singapore-based startup hiring remotely). Remote roles based in Canada, the US,
+     France or elsewhere in Europe are fine — the candidate is French and welcomes them.
    - Compensation listed in USD with no Canadian employment entity.
    - US ZIP codes or US state names in the location field of an on-site role.
    - Roles requiring Canadian citizenship or permanent residency when the
@@ -60,6 +64,9 @@ E. EMPLOYMENT-TYPE DISQUALIFIERS (hard — the candidate wants full-time permane
 F. POSTING-FORMAT DISQUALIFIER
    - Posting is a company careers index page listing multiple jobs rather
      than a single role description.
+   - Aggregator listings that hide the actual employer ("unnamed client", "partner
+     company", "client details shared after applying") or third-party application
+     funnels ("Job Application for X at Y" pages) rather than a real posting.
 
 G. MUST-HAVE vs NICE-TO-HAVE — CRITICAL DISTINCTION:
    ONLY treat requirements as hard if the JD uses language like:
@@ -89,6 +96,7 @@ STEP 2 — POSITIVE SIGNALS (each present = +1 to base score, max +3):
      preferences) — ops generalists own more there.
    - Remote role serving US customers or teams from Canada ("US or Canada",
      "remote North America") — welcome, as long as Canada is eligible.
+   - Remote role at a French- or European-based employer.
 
 ═══════════════════════════════════════════════════════════════════════
 
@@ -158,6 +166,14 @@ Example 7 — "Business Operations Consultant", 1-3 years required,
 → skip=false, fit_score=8. Finance is "an asset" not required (Step 1.G),
    experience floor matches, right city. Mild industry gap, but no
    hard disqualifier.
+
+Example 8 — "AI Operations Associate", 100% remote, employer based in Singapore
+→ skip=true, fit_score=2. Remote + keyword-rich, but the employer's geography is
+   outside Canada/US/Europe (Step 1.B). Keywords never rescue a disqualifier.
+
+Example 9 — Jobgether listing, "Product Owner for an undisclosed partner company"
+→ skip=true, fit_score=2. The actual employer is hidden — aggregator listing, not
+   a real posting (Step 1.F), even though the role description itself looks fine.
 
 ═══════════════════════════════════════════════════════════════════════
 
