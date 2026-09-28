@@ -201,43 +201,86 @@ def scrape_missing(settings: Settings, conn, jobs: list[dict[str, Any]], summary
 
 
 def score_jobs(settings: Settings, conn, jobs: list[dict[str, Any]], llm: LLM, summary: RunSummary) -> list[int]:
+    """Score ``jobs`` with ``scoring.workers`` threads. Workers only call the LLM; this (main) thread does every
+    DB write, abort check and log line, in completion order. The account-wide pacer in llm.py still caps total
+    throughput, so workers overlap model latency rather than exceed the rate limit."""
+    from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+
     from autojob.scorer import Scorer
 
     scorer = Scorer(settings, llm)
     threshold = int(settings.get("scoring.min_score_to_queue", 6))
+    workers = max(1, int(settings.get("scoring.workers", 4) or 1))
     queued: list[int] = []
     D.set_pipeline_state(conn, current_phase="scoring", jobs_total=len(jobs), jobs_processed=0)
     conn.commit()
-    for i, j in enumerate(jobs, 1):
-        _check_abort(conn)
-        try:
-            res = scorer.score(j)
-        except LLMBudgetExceeded as e:
-            logger.warning("%s — remaining jobs stay 'new' for the next run", e)
-            break
-        summary.scored += 1
-        if res is None:
-            D.update_job(conn, j["id"], status=D.STATUS_ERROR, processed_at=D.now_iso())
-            summary.errors += 1
-        else:
-            fields = dict(
-                company=res.get("company") or j.get("company"), fit_score=res["fit_score"],
-                fit_reasoning=res.get("one_liner", ""), strengths=json.dumps(res["strengths"], ensure_ascii=False),
-                gaps=json.dumps(res["gaps"], ensure_ascii=False), low_confidence=int(res["low_confidence"]),
-                scored_at=D.now_iso(), processed_at=D.now_iso(), scorer_model=res.get("model"),
-                description_length=len(j.get("description") or ""),
-            )
-            if res["skip"] or res["fit_score"] < threshold:
-                fields.update(status=D.STATUS_SKIPPED, skip_reason=res.get("skip_reason") or f"score {res['fit_score']} < {threshold}")
-                summary.skipped += 1
-            else:
-                fields.update(status=D.STATUS_QUEUED, skip_reason=None)
-                queued.append(j["id"])
-            D.update_job(conn, j["id"], **fields)
-            logger.info("scored %s/10 %s — %s at %s [%s]", res["fit_score"], "SKIP" if res["skip"] else "    ",
-                        j.get("title"), fields["company"], res.get("model"))
-        D.set_pipeline_state(conn, jobs_processed=i)
-        conn.commit()
+
+    def _work(job: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+        res = scorer.score(job)
+        return res, llm.last_model   # last_model is per thread: read it in the thread that made the call
+
+    pending = iter(jobs)
+    running: dict[Future, dict[str, Any]] = {}
+    stop = False
+    done_count = 0
+    ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="score")
+    try:
+        while True:
+            while not stop and len(running) < workers:
+                j = next(pending, None)
+                if j is None:
+                    break
+                running[ex.submit(_work, j)] = j
+            if not running:
+                break
+            finished, _ = wait(running, timeout=5, return_when=FIRST_COMPLETED)
+            try:
+                _check_abort(conn)
+            except Aborted:
+                stop = True
+                for f in running:
+                    f.cancel()
+                raise
+            for fut in finished:
+                j = running.pop(fut)
+                try:
+                    res, model = fut.result()
+                except LLMBudgetExceeded as e:
+                    if not stop:
+                        logger.warning("%s — remaining jobs stay 'new' for the next run", e)
+                    stop = True
+                    continue
+                summary.scored += 1
+                done_count += 1
+                if res is None:
+                    D.update_job(conn, j["id"], status=D.STATUS_ERROR, processed_at=D.now_iso())
+                    summary.errors += 1
+                else:
+                    fields = dict(
+                        company=res.get("company") or j.get("company"), fit_score=res["fit_score"],
+                        fit_reasoning=res.get("one_liner", ""),
+                        score_facts=json.dumps({"breakdown": res["score_breakdown"], **res["facts"]}, ensure_ascii=False)
+                        if res.get("facts") else None, strengths=json.dumps(res["strengths"], ensure_ascii=False),
+                        gaps=json.dumps(res["gaps"], ensure_ascii=False), low_confidence=int(res["low_confidence"]),
+                        scored_at=D.now_iso(), processed_at=D.now_iso(), scorer_model=res.get("model") or model,
+                        description_length=len(j.get("description") or ""),
+                    )
+                    if res["skip"] or res["fit_score"] < threshold:
+                        fields.update(status=D.STATUS_SKIPPED,
+                                      skip_reason=res.get("skip_reason") or f"score {res['fit_score']} < {threshold}")
+                        summary.skipped += 1
+                    else:
+                        fields.update(status=D.STATUS_QUEUED, skip_reason=None)
+                        queued.append(j["id"])
+                    D.update_job(conn, j["id"], **fields)
+                    logger.info("scored %s/10 %s — %s at %s [%s]", res["fit_score"], "SKIP" if res["skip"] else "    ",
+                                j.get("title"), fields["company"], fields["scorer_model"])
+                D.set_pipeline_state(conn, jobs_processed=done_count)
+                conn.commit()
+    finally:
+        # Don't block on in-flight LLM calls after an abort; their results are simply discarded
+        # (those jobs stay 'new' and are scored next run).
+        ex.shutdown(wait=not stop, cancel_futures=True)
     summary.llm_calls = llm.calls
     summary.queued = len(queued)
     return queued

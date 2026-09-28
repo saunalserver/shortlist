@@ -8,13 +8,22 @@ Failure policy (OpenRouter free models — shared community capacity, provider-l
   when the account itself is capped every model reports it and the run ends gracefully.
 - 400/401/403/404/422: deterministic request errors — the model is dropped immediately.
 - Non-JSON output (json mode): retried once on the same model, then the next model takes the call.
+- Empty completion (reasoning models that spend their budget thinking, or a flaky provider): no retry
+  on the same model — the next model takes the call at once. Still counts toward the error streak.
 - Calls are paced per model AND account-wide (~20 req/min on the free tier, all models combined).
+
+Thread-safe: ``pipeline.score_jobs`` calls ``chat_json`` from several worker threads. Pacing, model
+state and the call counter are guarded by locks; the HTTP request itself runs unlocked (in parallel).
+
+Per-model options (``scoring.models`` entries): ``rpm``, ``reasoning`` ("low"/"minimal"/"medium"/"high"
+→ OpenRouter ``reasoning.effort``; "off" → ``reasoning.enabled=false``) and ``max_tokens``.
 """
 from __future__ import annotations
 
 import json
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -31,14 +40,23 @@ DETERMINISTIC_HTTP = (400, 401, 403, 404, 422)  # retrying these can never succe
 # Free tier is ~20 req/min per ACCOUNT (all free models combined) — every call passes this floor.
 ACCOUNT_MIN_INTERVAL = 3.0
 _account_last_call = 0.0
+_account_lock = threading.Lock()
+
+
+def _reserve(last: float, interval: float) -> tuple[float, float]:
+    """Next free slot on a pacer: (new last-call time, seconds to sleep before calling)."""
+    now = time.monotonic()
+    slot = max(now, last + interval)
+    return slot, slot - now
 
 
 def _pace_account() -> None:
+    """Reserve the next account-wide slot under the lock, then sleep outside it."""
     global _account_last_call
-    wait = ACCOUNT_MIN_INTERVAL - (time.monotonic() - _account_last_call)
+    with _account_lock:
+        _account_last_call, wait = _reserve(_account_last_call, ACCOUNT_MIN_INTERVAL)
     if wait > 0:
         time.sleep(wait)
-    _account_last_call = time.monotonic()
 
 
 class LLMBudgetExceeded(RuntimeError):
@@ -53,7 +71,10 @@ class LLMAllModelsFailed(RuntimeError):
 class ModelSpec:
     name: str
     rpm: float = 10.0
+    reasoning: str | None = None     # OpenRouter reasoning effort, or "off"
+    max_tokens: int | None = None
     _last_call: float = field(default=0.0, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     depleted: bool = False
     failures: int = 0
     cooldown_until: float = 0.0
@@ -63,16 +84,25 @@ class ModelSpec:
         return 60.0 / self.rpm if self.rpm > 0 else 0.0
 
     def pace(self) -> None:
-        wait = self.min_interval - (time.monotonic() - self._last_call)
+        with self._lock:
+            self._last_call, wait = _reserve(self._last_call, self.min_interval)
         if wait > 0:
             time.sleep(wait)
-        self._last_call = time.monotonic()
+
+    def extra_body(self) -> dict[str, Any] | None:
+        if not self.reasoning:
+            return None
+        r = str(self.reasoning).lower()
+        if r in ("off", "false", "disabled"):
+            return {"reasoning": {"enabled": False}}
+        return {"reasoning": {"effort": r}}
 
     def available(self) -> bool:
         return not self.depleted and time.monotonic() >= self.cooldown_until
 
     def cool(self, seconds: float, why: str) -> None:
-        self.cooldown_until = time.monotonic() + seconds
+        with self._lock:
+            self.cooldown_until = max(self.cooldown_until, time.monotonic() + seconds)
         logger.warning("%s: %s — cooling down for %.0fs, using the next model", self.name, why, seconds)
 
 
@@ -89,12 +119,25 @@ class LLM:
         if not api_key:
             raise RuntimeError("LLM_API_KEY is not set (see .env.example)")
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=90, max_retries=0)
-        self.models = [ModelSpec(name=m["name"], rpm=float(m.get("rpm", 10))) for m in models]
+        # YAML reads an unquoted `reasoning: off` as False — treat that as "off", not as "unset".
+        self.models = [ModelSpec(name=m["name"], rpm=float(m.get("rpm", 10)),
+                                 reasoning="off" if m.get("reasoning") is False else m.get("reasoning"),
+                                 max_tokens=int(m["max_tokens"]) if m.get("max_tokens") else None)
+                       for m in models]
         if not self.models:
             raise RuntimeError("no LLM models configured")
         self.max_calls = max_calls
         self.calls = 0
-        self.last_model: str | None = None
+        self._lock = threading.Lock()          # guards calls + model state changes
+        self._local = threading.local()        # last_model is per thread (workers score in parallel)
+
+    @property
+    def last_model(self) -> str | None:
+        return getattr(self._local, "last_model", None)
+
+    @last_model.setter
+    def last_model(self, value: str | None) -> None:
+        self._local.last_model = value
 
     # -- public -----------------------------------------------------------------
     def chat_json(self, system: str, user: str, temperature: float = 0.2) -> dict[str, Any]:
@@ -106,8 +149,9 @@ class LLM:
 
     # -- internals ----------------------------------------------------------------
     def _chat(self, system: str, user: str, temperature: float, json_mode: bool) -> str:
-        if self.max_calls is not None and self.calls >= self.max_calls:
-            raise LLMBudgetExceeded(f"LLM call budget of {self.max_calls} reached")
+        with self._lock:
+            if self.max_calls is not None and self.calls >= self.max_calls:
+                raise LLMBudgetExceeded(f"LLM call budget of {self.max_calls} reached")
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         errors: list[str] = []
         for round_ in range(2):
@@ -118,7 +162,8 @@ class LLM:
                 if result is not None:
                     return result
             # Every model is cooling down or depleted. Wait for the soonest cooldown once, then retry the list.
-            waits = [spec.cooldown_until - time.monotonic() for spec in self.models if not spec.depleted]
+            with self._lock:
+                waits = [spec.cooldown_until - time.monotonic() for spec in self.models if not spec.depleted]
             if round_ == 0 and waits:
                 wait = max(0.0, min(waits))
                 if wait > 120:
@@ -137,21 +182,40 @@ class LLM:
                 kwargs: dict[str, Any] = {"model": spec.name, "messages": messages, "temperature": temperature}
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
+                if spec.max_tokens:
+                    kwargs["max_tokens"] = spec.max_tokens
+                extra = spec.extra_body()
+                if extra:
+                    kwargs["extra_body"] = extra
                 resp = self.client.chat.completions.create(**kwargs)
-                self.calls += 1
+                with self._lock:
+                    self.calls += 1
                 self.last_model = spec.name
                 content = (resp.choices[0].message.content or "") if resp.choices else ""
                 if not content.strip():
-                    raise ValueError("empty completion")
+                    # No same-model retry: a reasoning model that came back empty usually does it again,
+                    # and the next model answers now instead of after a 5 s sleep.
+                    with self._lock:
+                        spec.failures += 1
+                        drop = spec.failures >= MAX_CONSECUTIVE_ERRORS
+                        if drop:
+                            spec.depleted = True
+                    logger.warning("%s: empty completion — next model takes this call", spec.name)
+                    if drop:
+                        logger.warning("%s: %d errors in a row — dropping it for this run", spec.name, spec.failures)
+                    errors.append(f"{spec.name}: empty completion")
+                    return None
                 if json_mode:
                     parse_json(content)  # validate here so a JSON-broken model falls back instead of burning the job
-                spec.failures = 0
+                with self._lock:
+                    spec.failures = 0
                 return content
             except RateLimitError as e:
                 msg = str(e)
                 low = msg.lower()
                 if "per_day" in msg or "per day" in low or "daily" in low or "free-models" in low:
-                    spec.depleted = True
+                    with self._lock:
+                        spec.depleted = True
                     logger.warning("%s quota exhausted (daily) — dropping it for this run", spec.name)
                     errors.append(f"{spec.name}: daily quota")
                     return None
@@ -169,7 +233,8 @@ class LLM:
                 return None
             except (APITimeoutError, APIStatusError, ValueError) as e:
                 if isinstance(e, APIStatusError) and getattr(e, "status_code", None) in DETERMINISTIC_HTTP:
-                    spec.depleted = True
+                    with self._lock:
+                        spec.depleted = True
                     logger.warning("%s: HTTP %s — dropping it for this run (config/provider issue)", spec.name,
                                    e.status_code)
                     errors.append(f"{spec.name}: http {e.status_code}")
@@ -181,10 +246,13 @@ class LLM:
                     spec.cool(OVERLOAD_COOLDOWN, "overloaded (503/timeout)")
                     errors.append(f"{spec.name}: overloaded")
                     return None
-                spec.failures += 1
+                with self._lock:
+                    spec.failures += 1
+                    drop = spec.failures >= MAX_CONSECUTIVE_ERRORS
+                    if drop:
+                        spec.depleted = True
                 logger.warning("%s error (attempt %d/2): %s", spec.name, attempt + 1, str(e)[:160])
-                if spec.failures >= MAX_CONSECUTIVE_ERRORS:
-                    spec.depleted = True
+                if drop:
                     logger.warning("%s: %d errors in a row — dropping it for this run", spec.name, spec.failures)
                     errors.append(f"{spec.name}: repeated errors")
                     return None

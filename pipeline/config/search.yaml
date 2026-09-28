@@ -57,25 +57,42 @@ queries:
 scoring:
   min_score_to_queue: 7        # 2026-09-12: 6→7 — 0 applies ever at ≤6, queue was 60% unread 6s. Digest is threshold-driven, so it tightens too.
   # Docs are generated on demand from the dashboard only — no auto-generation (autodoc dropped 2026-09-07).
+  # Scorer version. 1 = prompts/scorer.md (the model picks the score). 2 = prompts/scorer_v2.md: the model only
+  # extracts facts (role family, duties match, seniority, years, contract, location, signals) and the score is
+  # computed in code from `v2:` below — consistent across models, tunable from apply/dismiss data
+  # (scripts/eval_scorer.py). 2026-09-28: v1 put 139 jobs at 8 → 5 applied, 129 dismissed.
+  version: 1
+  v2:
+    family_base: { target: 6, adjacent: 4, off: 2 }
+    duties_match: { 0: -3, 1: -1, 2: 0, 3: 1 }        # how squarely the day-to-day is the candidate's work
+    seniority: { entry: 1, junior: 1, mid: 0, senior: -3, lead: -3, manager: -1, executive: -5 }
+    people_manager: -2
+    years_required: { le2: 1, eq3: 0, eq4: -1, ge5: -3 }   # ignored when not stated
+    missing_must_have: -1                             # per missing hard requirement, max 2
+    signals_cap: 2                                    # automation_ai, bilingual_french, tool_overlap, early_career…
+    employer: { startup: 1, smb: 1, enterprise: -1, public_sector: 0, unknown: 0 }
   max_llm_calls_per_run: 1000  # hard safety cap (raised 2026-09-07: free OpenRouter budget is 1,000/day, ~130 used)
   max_scrapes_per_run: 600    # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
-  # 2026-09-13: QUALITY-FIRST per owner — free models ordered best→worst judgment, slow is fine
-  # (runs are 2×/day). Free tier rotates: minimax-m2.7/m3 and glm-5.2 were PULLED from OpenRouter
-  # (gone from catalog 09-13 — that's why they left the chain, not a quality choice). All models
-  # below live-tested TODAY through llm.py (json mode, real scorer prompt); inkling:free 403s (dropped).
-  # Every model gets called in list order until provider 429s bench it 90s — the best model absorbs
-  # ~all calls, next-best catches overflow. Free quota = 1000 req/day account-wide (~130-280/run).
-  # Re-test through llm.py (`venv/bin/python scripts/test_models.py`) before swapping models.
+  # 2026-09-28 re-benchmark (real scorer prompt, 3 labelled jobs: 1 applied, 2 dismissed-at-8; ~42 live calls):
+  # REASONING IS THE SLOWNESS. nemotron-ultra with default reasoning = 35–73 s and ~1–1.5k thinking tokens/job,
+  # 12% empty completions (166/1,426 since 09-21); with `reasoning: off` = 4–12 s, 0/9 empty, same verdicts.
+  # Dead/dropped: nex-n2.5-pro:free (gone from catalog), nex-n2.5-mini:free (404 "unavailable for free"),
+  # nemotron-3.5-lightning:free (217–400 s/job, 6–15k thinking tokens, scored Walmart dept manager 5),
+  # nemotron-3-super:free (off → 2/3 empty; on → 36–78 s, lenient), qwen3.7-flash paid (skipped the applied job).
+  # Stealth/preview models are avoided on purpose: prompts carry the candidate's profile.
+  # `workers` threads score in parallel; llm.py still paces the whole account at ~20 req/min, so throughput is
+  # pacer-bound (~3 s/job) instead of latency-bound (~52 s/job median before).
+  workers: 4
+  # max_tokens only on reasoning-off models (reasoning tokens would count against it); answers are ~200–600 tokens.
   models:
-    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B flagship, best judgment, 8-23s
-    - { name: nex-agi/nex-n2.5-pro:free,             rpm: 20 }  # FREE: pro tier, top score in test, ~39s
-    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: solid judgment, ~46s
-    - { name: nex-agi/nex-n2.5-mini:free,             rpm: 20 }  # FREE: proven workhorse (928 scores), 9s
-    - { name: nvidia/nemotron-3.5-lightning:free,     rpm: 20 }  # FREE variant of the paid fallback
-    - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: fast, pool saturates often
+    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE: 4–12 s, 0/9 empty, best judgment
+    - { name: poolside/laguna-s-2.1:free,             rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE: 5–7 s, right on 2/2; pool often saturated (429)
+    - { name: google/gemma-4-31b-it:free,             rpm: 20 }  # FREE: untested — pool saturated (429) during the 09-28 benchmark
+    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: 11–49 s (reasons ~2.5–6k tokens), lenient on borderline
     - { name: openrouter/free,                        rpm: 20 }  # FREE auto-router backstop
-    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID ~$0.06/run: only when the 1000/day free quota is gone
+    - { name: deepseek/deepseek-v4-flash,             rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID ~$0.0004/job: 3–20 s, right on 2/3 (lenient on the 3rd)
+    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID ~$0.0006/job: 1–34 s, same verdicts as ultra
   docs_models:
     - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best prose in the pool
     - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: docs fallback

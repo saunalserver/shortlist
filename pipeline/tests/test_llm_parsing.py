@@ -5,6 +5,14 @@ import pytest
 from autojob.llm import parse_json, strip_wrappers
 
 
+@pytest.fixture(autouse=True)
+def _no_account_pacing(monkeypatch):
+    """The 3 s account-wide pacer is real-API behaviour; unit tests don't need to wait for it."""
+    import autojob.llm as L
+
+    monkeypatch.setattr(L, "ACCOUNT_MIN_INTERVAL", 0.0)
+
+
 def test_parse_plain():
     assert parse_json('{"a": 1}') == {"a": 1}
 
@@ -43,6 +51,9 @@ def test_budget_error_propagates_from_scorer(tmp_path, monkeypatch):
 
         def candidate_profile(self):
             return "profile"
+
+        def get(self, key, default=None):
+            return default
 
     llm = LLM("key", "https://example.invalid/v1/", [{"name": "m", "rpm": 1000}], max_calls=0)
     with pytest.raises(LLMBudgetExceeded):
@@ -105,3 +116,53 @@ def test_http_400_drops_model_immediately():
     llm = _llm_with([err, '{"ok": true}'])
     assert llm.chat_json("s", "u") == {"ok": True}
     assert llm.models[0].depleted
+
+
+def test_empty_completion_moves_to_next_model_without_retry():
+    """An empty answer is not retried on the same model: the next model takes the call at once."""
+    llm = _llm_with(["", '{"fit_score": 6}'])
+    assert llm.chat_json("s", "u") == {"fit_score": 6}
+    assert llm.last_model == "m2"
+    assert llm.models[0].failures == 1 and not llm.models[0].depleted
+
+
+def test_empty_completions_eventually_drop_model():
+    from autojob.llm import MAX_CONSECUTIVE_ERRORS
+
+    llm2 = _llm_with(["", '{"ok": 1}'])
+    llm2.models[0].failures = MAX_CONSECUTIVE_ERRORS - 1
+    assert llm2.chat_json("s", "u") == {"ok": 1}
+    assert llm2.models[0].depleted
+
+
+def test_reasoning_and_max_tokens_are_sent():
+    from autojob.llm import LLM
+
+    sent = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            sent.append(kwargs)
+            return type("R", (), {"choices": [type("C", (), {"message": type("M", (), {"content": '{"a": 1}'})()})()]})()
+
+    llm = LLM("key", "https://example.invalid/v1/", [
+        {"name": "m1", "rpm": 1000, "reasoning": "low", "max_tokens": 900},
+    ])
+    llm.client = type("Client", (), {"chat": type("Chat", (), {"completions": FakeCompletions()})()})()
+    llm.chat_json("s", "u")
+    assert sent[0]["extra_body"] == {"reasoning": {"effort": "low"}} and sent[0]["max_tokens"] == 900
+    llm.models[0].reasoning = "off"
+    llm.chat_json("s", "u")
+    assert sent[1]["extra_body"] == {"reasoning": {"enabled": False}}
+    yaml_off = LLM("key", "https://example.invalid/v1/", [{"name": "m", "reasoning": False}])
+    assert yaml_off.models[0].extra_body() == {"reasoning": {"enabled": False}}
+
+
+def test_parallel_calls_count_exactly():
+    """Worker threads share one LLM: the call counter and budget stay exact."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    llm = _llm_with(['{"x": 1}'] * 40)
+    with ThreadPoolExecutor(8) as ex:
+        results = list(ex.map(lambda _: llm.chat_json("s", "u"), range(40)))
+    assert len(results) == 40 and llm.calls == 40

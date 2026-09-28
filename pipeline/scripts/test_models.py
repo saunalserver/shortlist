@@ -7,14 +7,15 @@ from autojob.settings import load_settings
 from autojob.llm import LLM
 from autojob import db
 
+# "model@effort" sends OpenRouter reasoning (effort "low"/"minimal"/…, or "off"). 2026-09-28 benchmark:
+# reasoning is what makes free models slow (ultra 35–73 s on, 4–12 s off) — see scoring.models comments.
 CANDIDATES = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nex-agi/nex-n2.5-pro:free",
-    "thinkingmachines/inkling:free",
-    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free@off",
+    "poolside/laguna-s-2.1:free@off",
+    "google/gemma-4-31b-it:free",
     "cohere/north-mini-code:free",
-    "nex-agi/nex-n2.5-mini:free",
-    "poolside/laguna-s-2.1:free",
+    "qwen/qwen3.8-27b:free",
+    "deepseek/deepseek-v4-flash@off",
 ]
 
 settings = load_settings()
@@ -31,15 +32,17 @@ user = f"Title: {job['title']}\nURL: {job['url']}\n" + "\n".join(meta) + \
        f"\n\nFull job description:\n{job['description']}"
 print(f"TEST JOB: {job['title']} @ {job['company']}\n")
 
-for name in CANDIDATES:
-    llm = LLM(settings.secrets.llm_api_key, settings.secrets.llm_base_url, [{"name": name, "rpm": 20}])
+for cand in CANDIDATES:
+    name, _, effort = cand.partition("@")
+    llm = LLM(settings.secrets.llm_api_key, settings.secrets.llm_base_url,
+              [{"name": name, "rpm": 20, **({"reasoning": effort} if effort else {})}])
     t0 = time.monotonic()
     try:
         r = llm.chat_json(system, user, temperature=0.2)
         need = {"fit_score", "skip", "one_liner", "strengths", "gaps"}
         missing = need - set(r.keys())
-        print(f"OK   {name:45s} {time.monotonic()-t0:5.1f}s  score={r.get('fit_score')} "
+        print(f"OK   {cand:45s} {time.monotonic()-t0:5.1f}s  score={r.get('fit_score')} "
               f"skip={r.get('skip')} missing={sorted(missing) or '-'}")
         print(f"     one_liner: {str(r.get('one_liner'))[:140]}")
     except Exception as e:  # noqa: BLE001
-        print(f"FAIL {name:45s} {time.monotonic()-t0:5.1f}s  {str(e)[:150]}")
+        print(f"FAIL {cand:45s} {time.monotonic()-t0:5.1f}s  {str(e)[:150]}")

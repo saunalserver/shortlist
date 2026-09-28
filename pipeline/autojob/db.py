@@ -45,7 +45,7 @@ JOB_COLUMNS = {
     "fingerprint", "fit_score", "fit_reasoning", "strengths", "gaps", "skip_reason",
     "prefilter_reason", "status", "fetched_at", "processed_at", "scored_at", "scorer_model",
     "low_confidence", "description_length", "output_folder", "docs_generated_at",
-    "user_action", "user_action_at", "run_id", "link_checked_at",
+    "user_action", "user_action_at", "run_id", "link_checked_at", "score_facts",
 }
 
 
@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     user_action TEXT,
     user_action_at TEXT,
     run_id INTEGER,
-    link_checked_at TEXT
+    link_checked_at TEXT,
+    score_facts TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(fingerprint);
@@ -235,6 +236,9 @@ def init_db(path: Path | None = None) -> None:
         # v3: expiry support + looser company key in fingerprints
         if "link_checked_at" not in _columns(conn, "jobs"):
             conn.execute("ALTER TABLE jobs ADD COLUMN link_checked_at TEXT")
+        # scorer v2: extracted facts + score breakdown (JSON), so a score can always be explained
+        if "score_facts" not in _columns(conn, "jobs"):
+            conn.execute("ALTER TABLE jobs ADD COLUMN score_facts TEXT")
         if "expired" not in _columns(conn, "runs"):
             conn.execute("ALTER TABLE runs ADD COLUMN expired INTEGER DEFAULT 0")
         if 0 < version < 3:
