@@ -166,3 +166,92 @@ def test_parallel_calls_count_exactly():
     with ThreadPoolExecutor(8) as ex:
         results = list(ex.map(lambda _: llm.chat_json("s", "u"), range(40)))
     assert len(results) == 40 and llm.calls == 40
+
+
+# -- free-quota probe (OpenRouter GET /key) ------------------------------------
+
+def _llm_quota(models, reserve, recheck, remaining):
+    """LLM with a stubbed quota probe and a client that always answers valid JSON on the first model."""
+    from autojob.llm import LLM
+
+    llm = LLM("key", "https://openrouter.invalid/v1/", models,
+              free_quota_reserve=reserve, quota_recheck_every=recheck)
+    llm._probe_free_remaining = lambda: remaining
+
+    class C:
+        def create(self, **kwargs):
+            return type("R", (), {"choices": [type("Ch", (), {"message": type("M", (), {"content": '{"ok": 1}'})()})()]})()
+
+    llm.client = type("Client", (), {"chat": type("Chat", (), {"completions": C()})()})()
+    return llm
+
+
+def test_free_quota_probe_benches_free_models():
+    """At/below the reserve the :free models are benched and the paid fallback answers."""
+    llm = _llm_quota([{"name": "a:free", "rpm": 1000}, {"name": "b:free", "rpm": 1000}, {"name": "paid", "rpm": 1000}],
+                     reserve=250, recheck=100, remaining=100)
+    assert llm.chat_json("s", "u") == {"ok": 1}
+    assert llm.models[0].depleted and llm.models[1].depleted
+    assert not llm.models[2].depleted and llm.last_model == "paid"
+
+
+def test_free_quota_exhausted_with_no_paid_raises_budget():
+    from autojob.llm import LLMBudgetExceeded
+
+    llm = _llm_quota([{"name": "a:free", "rpm": 1000}], reserve=250, recheck=100, remaining=0)
+    with pytest.raises(LLMBudgetExceeded):
+        llm.chat_json("s", "u")
+
+
+def test_probe_failure_never_breaks_a_run():
+    llm = _llm_quota([{"name": "m1", "rpm": 1000}], reserve=250, recheck=100, remaining=None)
+    assert llm.chat_json("s", "u") == {"ok": 1}
+    assert not llm.models[0].depleted
+
+
+def test_probe_parses_remaining_from_key_endpoint(monkeypatch):
+    import autojob.llm as llm_mod
+    from autojob.llm import LLM
+
+    llm = LLM("key", "https://openrouter.ai/api/v1", [{"name": "m", "rpm": 1000}])
+
+    class R:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": {"free_model_daily_requests": {"remaining": 506, "limit": 1000}}}
+
+    monkeypatch.setattr(llm_mod.httpx, "get", lambda *a, **k: R())
+    assert llm._probe_free_remaining() == 506
+
+
+def test_openrouter_free_router_counts_as_free():
+    """openrouter/free draws on the free bucket even though its name doesn't end in :free."""
+    from autojob.llm import _is_free
+
+    assert _is_free("openrouter/free") and _is_free("a:free") and not _is_free("nvidia/nemotron-3.5-lightning")
+    llm = _llm_quota([{"name": "openrouter/free", "rpm": 1000}, {"name": "paid", "rpm": 1000}],
+                     reserve=250, recheck=100, remaining=10)
+    assert llm.chat_json("s", "u") == {"ok": 1}
+    assert llm.models[0].depleted and llm.last_model == "paid"
+
+
+def test_probe_disabled_when_recheck_is_zero():
+    llm = _llm_quota([{"name": "m1", "rpm": 1000}], reserve=250, recheck=0, remaining=0)
+    probes = []
+    llm._probe_free_remaining = lambda: probes.append(1) or 0
+    assert llm.chat_json("s", "u") == {"ok": 1}  # remaining=0 would bench, but the probe never runs
+    assert not probes and not llm.models[0].depleted
+
+
+def test_probe_http_failure_returns_none(monkeypatch):
+    import autojob.llm as llm_mod
+    from autojob.llm import LLM
+
+    def boom(*a, **k):
+        raise OSError("network down")
+
+    monkeypatch.setattr(llm_mod.httpx, "get", boom)
+    llm = LLM("key", "https://openrouter.ai/api/v1", [{"name": "m", "rpm": 1000}])
+    assert llm._probe_free_remaining() is None

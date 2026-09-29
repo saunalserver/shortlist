@@ -71,7 +71,13 @@ scoring:
     missing_must_have: -1                             # per missing hard requirement, max 2
     signals_cap: 2                                    # automation_ai, bilingual_french, tool_overlap, early_career…
     employer: { startup: 1, smb: 1, enterprise: -1, public_sector: 0, unknown: 0 }
-  max_llm_calls_per_run: 1000  # hard safety cap (raised 2026-09-07: free OpenRouter budget is 1,000/day, ~130 used)
+  max_llm_calls_per_run: 1000  # hard safety cap — now also the paid-spend ceiling (~$0.3/run worst case)
+  # OpenRouter free bucket: 1,000 free-model requests/day for the whole account, resets 17:00 PDT (UTC midnight).
+  # llm.py probes GET /api/v1/key before the first call and every `quota_recheck_every` calls (0 disables the
+  # probe entirely); at/below the reserve the free models are benched for the rest of the run and the paid
+  # fallbacks take over. See free_quota_reserve above.
+  free_quota_reserve: 250
+  quota_recheck_every: 100
   max_scrapes_per_run: 600    # descriptions fetched from job pages per run (each ~1.5 s)
   # Tried in order; a model is dropped for the rest of the run after repeated quota errors.
   # 2026-09-28 re-benchmark (real scorer prompt, 3 labelled jobs: 1 applied, 2 dismissed-at-8; ~42 live calls):
@@ -81,23 +87,31 @@ scoring:
   # nemotron-3.5-lightning:free (217–400 s/job, 6–15k thinking tokens, scored Walmart dept manager 5),
   # nemotron-3-super:free (off → 2/3 empty; on → 36–78 s, lenient), qwen3.7-flash paid (skipped the applied job).
   # Stealth/preview models are avoided on purpose: prompts carry the candidate's profile.
-  # `workers` threads score in parallel; llm.py still paces the whole account at ~20 req/min, so throughput is
-  # pacer-bound (~3 s/job) instead of latency-bound (~52 s/job median before).
+  # 2026-09-29 PAID-FIRST (user call): ~$0.15/day at a few hundred calls/day stretches the ~$9.8 credit ~10 weeks,
+  # paid variants have NO platform RPM cap (official limits page) so scoring runs ~1 s/call instead of the free
+  # 3 s floor, and no more free-pool 429/empty-completion roulette. Free models are now the backstop; the free
+  # bucket (1,000/day) is probed via GET /key — see free_quota_reserve below.
+  # lightning vs deepseek-v4-flash-0731 (AA v4.3.2, BenchLM, checked 2026-09-29): 0731 wins raw intelligence
+  # 34.5 vs 13.6 — but that's math/coding/agentic, not fixed-rubric classification. Lightning wins speed
+  # (356 vs 153 t/s), availability (99.89 vs 99.17%), has published IFEval 68.5 (0731: none), costs less under
+  # default routing, and is the only paid model verdict-validated vs the calibration family ("same verdicts as
+  # ultra", 09-28 bench; 0731 was lenient on 1 of 3 labelled jobs + documented borderline drift in CTGT study).
+  # `workers` threads score in parallel; llm.py paces :free models at ~20 req/min account-wide, paid specs at
+  # their own `rpm`.
   workers: 4
   # max_tokens only on reasoning-off models (reasoning tokens would count against it); answers are ~200–600 tokens.
   models:
-    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE: 4–12 s, 0/9 empty, best judgment
-    - { name: poolside/laguna-s-2.1:free,             rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE: 5–7 s, right on 2/2; pool often saturated (429)
-    - { name: google/gemma-4-31b-it:free,             rpm: 20 }  # FREE: untested — pool saturated (429) during the 09-28 benchmark
-    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: 11–49 s (reasons ~2.5–6k tokens), lenient on borderline
-    - { name: openrouter/free,                        rpm: 20 }  # FREE auto-router backstop
-    - { name: deepseek/deepseek-v4-flash,             rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID ~$0.0004/job: 3–20 s, right on 2/3 (lenient on the 3rd)
-    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID ~$0.0006/job: 1–34 s, same verdicts as ultra
-  docs_models:
+    - { name: nvidia/nemotron-3.5-lightning,          rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID PRIMARY ~$0.0003/call: 356 t/s, verdict-identical to ultra
+    - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE 2nd (review: keeps fallback verdicts in the calibration family; benched at ≤ reserve)
+    - { name: deepseek/deepseek-v4-flash,             rpm: 60, reasoning: "off", max_tokens: 2000 }  # PAID 3rd ~$0.0004/call: cross-family, 2/3 verdicts (lenient on 1) — only if both above fail
+    - { name: poolside/laguna-s-2.1:free,             rpm: 20, reasoning: "off", max_tokens: 2000 }  # FREE backstop: 5–7 s, right on 2/2
+    - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE backstop: 11–49 s, lenient on borderline
+    - { name: google/gemma-4-31b-it:free,             rpm: 20 }  # FREE backstop (pool saturated at last 2 probes — 0.2 s 429s)
+    - { name: openrouter/free,                        rpm: 20 }  # FREE last-ditch (random router — never fires unless 6 models above all fail)
+  docs_models:  # docs stay FREE-first: on-demand/rare, and ultra:free is the best prose in the pool; quota probe protects the bucket
     - { name: nvidia/nemotron-3-ultra-550b-a55b:free, rpm: 20 }  # FREE: 550B, best prose in the pool
     - { name: cohere/north-mini-code:free,            rpm: 20 }  # FREE: docs fallback
     - { name: poolside/laguna-s-2.1:free,             rpm: 20 }  # FREE: docs fallback
-    - { name: openrouter/free,                        rpm: 20 }  # FREE backstop
     - { name: nvidia/nemotron-3.5-lightning,          rpm: 60 }  # PAID fallback when free quota gone
 
 # Shortlisted jobs you have not acted on are retired automatically (status "expired") when they are

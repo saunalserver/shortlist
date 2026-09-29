@@ -6,11 +6,13 @@ Failure policy (OpenRouter free models — shared community capacity, provider-l
   ~90 s and the next model takes the call. Cooled models are tried again later in the run.
 - 429 account daily quota ("per day" / "free-models"): the model is dropped for the rest of the run;
   when the account itself is capped every model reports it and the run ends gracefully.
-- 400/401/403/404/422: deterministic request errors — the model is dropped immediately.
+- Free-model daily quota is also probed proactively (OpenRouter GET /key): at/below the reserve the ":free"
+  models are benched for the rest of the run and the paid fallback takes over (no 429-walking the chain).
+- 400/401/402/403/404/422: deterministic request errors (402 = out of credit) — dropped immediately.
 - Non-JSON output (json mode): retried once on the same model, then the next model takes the call.
 - Empty completion (reasoning models that spend their budget thinking, or a flaky provider): no retry
   on the same model — the next model takes the call at once. Still counts toward the error streak.
-- Calls are paced per model AND account-wide (~20 req/min on the free tier, all models combined).
+- Calls are paced per model; :free models additionally pass an account-wide floor (~20 req/min free tier).
 
 Thread-safe: ``pipeline.score_jobs`` calls ``chat_json`` from several worker threads. Pacing, model
 state and the call counter are guarded by locks; the HTTP request itself runs unlocked (in parallel).
@@ -28,6 +30,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 from openai import APIStatusError, APITimeoutError, OpenAI, RateLimitError
 
 logger = logging.getLogger("autojob")
@@ -35,9 +38,10 @@ logger = logging.getLogger("autojob")
 OVERLOAD_COOLDOWN = 90.0     # seconds a model sits out after back-to-back 503s / provider 429s
 RATELIMIT_COOLDOWN = 60.0    # seconds after a per-minute 429
 MAX_CONSECUTIVE_ERRORS = 6   # hard errors in a row before a model is dropped for the run
-DETERMINISTIC_HTTP = (400, 401, 403, 404, 422)  # retrying these can never succeed
+DETERMINISTIC_HTTP = (400, 401, 402, 403, 404, 422)  # retrying these can never succeed (402 = out of credit)
 
-# Free tier is ~20 req/min per ACCOUNT (all free models combined) — every call passes this floor.
+# The free tier is ~20 req/min per ACCOUNT (all :free models combined) — every FREE call passes this floor
+# (paid variants have no platform cap; see _try_model).
 ACCOUNT_MIN_INTERVAL = 3.0
 _account_last_call = 0.0
 _account_lock = threading.Lock()
@@ -114,8 +118,15 @@ def _is_overload(err: Exception) -> bool:
     return status in (502, 503, 504) or "high demand" in msg or "overloaded" in msg or "timed out" in msg
 
 
+def _is_free(name: str) -> bool:
+    """True for anything drawing on the free bucket: ":free" variants AND the ``openrouter/free`` router
+    (it routes to free models, so it shares the 1,000/day allowance and the 20 req/min account cap)."""
+    return name.endswith(":free") or name == "openrouter/free"
+
+
 class LLM:
-    def __init__(self, api_key: str, base_url: str, models: list[dict[str, Any]], max_calls: int | None = None):
+    def __init__(self, api_key: str, base_url: str, models: list[dict[str, Any]], max_calls: int | None = None,
+                 free_quota_reserve: int = 0, quota_recheck_every: int = 0):
         if not api_key:
             raise RuntimeError("LLM_API_KEY is not set (see .env.example)")
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=90, max_retries=0)
@@ -128,6 +139,11 @@ class LLM:
             raise RuntimeError("no LLM models configured")
         self.max_calls = max_calls
         self.calls = 0
+        self._api_key, self._base_url = api_key, base_url
+        self._quota_reserve = int(free_quota_reserve)
+        self._quota_recheck_every = int(quota_recheck_every)
+        self._free_probe_done = False       # one probe attempt even on failure — never re-hammer /key per call
+        self._free_probed_calls = 0
         self._lock = threading.Lock()          # guards calls + model state changes
         self._local = threading.local()        # last_model is per thread (workers score in parallel)
 
@@ -148,10 +164,52 @@ class LLM:
         return strip_wrappers(self._chat(system, user, temperature, json_mode=False))
 
     # -- internals ----------------------------------------------------------------
+    def _probe_free_remaining(self) -> int | None:
+        """Remaining free-model requests today from OpenRouter's /key endpoint (None if unknown)."""
+        if "openrouter" not in self._base_url:
+            return None
+        try:
+            r = httpx.get(f"{self._base_url.rstrip('/')}/key",
+                          headers={"Authorization": f"Bearer {self._api_key}"}, timeout=10)
+            r.raise_for_status()
+            return int(r.json()["data"]["free_model_daily_requests"]["remaining"])
+        except Exception as e:  # a failed probe must never break a run
+            logger.info("free-quota probe failed: %s", str(e)[:120])
+            return None
+
+    def _check_free_quota(self) -> None:
+        """Probe the free bucket; at/below the reserve bench the free models (paid fallback takes over).
+        ``quota_recheck_every: 0`` disables probing entirely, including the first check."""
+        with self._lock:
+            if not self._quota_recheck_every:
+                return
+            if self._free_probe_done and self.calls - self._free_probed_calls < self._quota_recheck_every:
+                return
+            self._free_probe_done = True
+            self._free_probed_calls = self.calls
+        remaining = self._probe_free_remaining()
+        if remaining is None:
+            return
+        with self._lock:
+            if remaining > self._quota_reserve:
+                logger.info("OpenRouter free bucket: %d remaining (reserve %d, recheck every %d calls)",
+                            remaining, self._quota_reserve, self._quota_recheck_every)
+                return
+            benched = [s for s in self.models if _is_free(s.name) and not s.depleted]
+            for s in benched:
+                s.depleted = True
+            if benched:
+                logger.warning("free bucket at %d ≤ reserve %d — benching %d free model(s) for this run, "
+                               "paid fallback takes over", remaining, self._quota_reserve, len(benched))
+            if not any(not s.depleted for s in self.models):
+                raise LLMBudgetExceeded(f"free quota exhausted ({remaining} left, reserve {self._quota_reserve}) "
+                                        "— no non-free model left this run")
+
     def _chat(self, system: str, user: str, temperature: float, json_mode: bool) -> str:
         with self._lock:
             if self.max_calls is not None and self.calls >= self.max_calls:
                 raise LLMBudgetExceeded(f"LLM call budget of {self.max_calls} reached")
+        self._check_free_quota()
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         errors: list[str] = []
         for round_ in range(2):
@@ -177,7 +235,8 @@ class LLM:
         """Up to two attempts on one model. Returns the completion, or None to move on to the next model."""
         for attempt in range(2):
             spec.pace()
-            _pace_account()
+            if _is_free(spec.name):
+                _pace_account()  # the ~20 req/min account cap is a free-tier rule; paid variants have none
             try:
                 kwargs: dict[str, Any] = {"model": spec.name, "messages": messages, "temperature": temperature}
                 if json_mode:
@@ -235,8 +294,8 @@ class LLM:
                 if isinstance(e, APIStatusError) and getattr(e, "status_code", None) in DETERMINISTIC_HTTP:
                     with self._lock:
                         spec.depleted = True
-                    logger.warning("%s: HTTP %s — dropping it for this run (config/provider issue)", spec.name,
-                                   e.status_code)
+                    why = "out of credit — top up OpenRouter" if e.status_code == 402 else "config/provider issue"
+                    logger.warning("%s: HTTP %s — dropping it for this run (%s)", spec.name, e.status_code, why)
                     errors.append(f"{spec.name}: http {e.status_code}")
                     return None
                 if _is_overload(e):

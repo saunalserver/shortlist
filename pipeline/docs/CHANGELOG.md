@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.4.0 — 2026-09-29 (paid-first scoring + free-quota probe)
+
+- **Scoring chain reordered paid-first** (owner call): `nemotron-3.5-lightning` primary (~$0.0003/call, 356 t/s,
+  verdict-identical to ultra per the 09-28 bench), `deepseek-v4-flash` second (alias now serves v4.1-flash),
+  free models demoted to backstop. Rationale: free-pool 429/empty-completion roulette was the flagged bottleneck;
+  paid variants carry no platform RPM cap (official limits page), so runs pace ~1 s/call instead of the free
+  3 s floor; ~$0.15/day stretches the ~$9.8 credit ~10 weeks. lightning chosen over deepseek-v4-flash-0731
+  despite 0731's higher AA index (34.5 vs 13.6): that measures math/coding/agentic, not fixed-rubric
+  classification — 0731 has no published IFEval, documented borderline drift (CTGT), 2× slower output, and was
+  lenient on 1/3 labelled jobs; lightning is the calibration family.
+- **Free-quota probe** (`llm.py`): `GET /api/v1/key` before the first call and every `quota_recheck_every` calls;
+  at ≤ `free_quota_reserve` (250) the `:free` models are benched for the run and paid fallback takes over —
+  no more 429-walking the chain when the 1,000/day free bucket runs dry. Failed probes never break a run.
+  Config: `scoring.free_quota_reserve`, `scoring.quota_recheck_every`. Wired into scoring and docs chains.
+- Account-wide 3 s pacer now applies only to `:free` models (free-tier rule); paid specs pace at their own rpm.
+- docs chain drops `openrouter/free` (random router — can land on stealth providers; prompts carry the profile).
+- Fixes: 2 pre-existing ruff errors (B023 loop-var lambda in ats.py, unused `queued_ids` in pipeline.py).
+- Post-review fixes (Opus 5.5 pre-commit review): `openrouter/free` now counts as free for benching/pacing
+  (`_is_free()`); 402 (out of credit) drops a model immediately with a clear log; `ultra:free` moved to 2nd so
+  fallback verdicts stay in the calibration family; probe logs the remaining count on every check.
+
 ## 2.3.0 — 2026-09-28 (sourcing expansion: France/EU remote + Canada)
 
 - **9 new sources**, all without keys: workable_search, wttj, successfactors, getro, remoterocketship,

@@ -292,7 +292,9 @@ def generate_docs_for(settings: Settings, conn, job_ids: list[int], summary: Run
 
     if not job_ids:
         return 0
-    llm = LLM(settings.secrets.llm_api_key, settings.secrets.llm_base_url, settings.get("scoring.docs_models", []))
+    llm = LLM(settings.secrets.llm_api_key, settings.secrets.llm_base_url, settings.get("scoring.docs_models", []),
+              free_quota_reserve=int(settings.get("scoring.free_quota_reserve", 0)),
+              quota_recheck_every=int(settings.get("scoring.quota_recheck_every", 0)))
     gen = DocGenerator(settings, llm)
     done = 0
     for jid in job_ids:
@@ -398,10 +400,10 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
         # 5. score
         if candidates:
             llm = LLM(settings.secrets.llm_api_key, settings.secrets.llm_base_url, settings.get("scoring.models", []),
-                      max_calls=int(settings.get("scoring.max_llm_calls_per_run", 400)))
-            queued_ids = score_jobs(settings, conn, candidates, llm, summary)
-        else:
-            queued_ids = []
+                      max_calls=int(settings.get("scoring.max_llm_calls_per_run", 400)),
+                      free_quota_reserve=int(settings.get("scoring.free_quota_reserve", 0)),
+                      quota_recheck_every=int(settings.get("scoring.quota_recheck_every", 0)))
+            score_jobs(settings, conn, candidates, llm, summary)
         logger.info("scoring: %d queued, %d skipped, %d errors (%d LLM calls)", summary.queued, summary.skipped,
                     summary.errors, summary.llm_calls)
         # 6. notify

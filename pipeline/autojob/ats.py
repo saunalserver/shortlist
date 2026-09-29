@@ -211,7 +211,7 @@ def fetch_personio(slug: str, company: str, source: str) -> list[RawJob]:
     text = get_text(PERSONIO_LIST.format(slug=slug), timeout=15)
     out: list[RawJob] = []
     for job in ET.fromstring(text).iter("job"):
-        g = lambda tag: (job.findtext(tag) or "").strip()  # noqa: E731
+        g = lambda tag, job=job: (job.findtext(tag) or "").strip()  # noqa: E731
         jid = g("id")
         out.append(RawJob(
             url=canonical_url(f"https://{slug}.jobs.personio.com/view/{jid}"),
