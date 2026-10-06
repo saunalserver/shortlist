@@ -13,5 +13,10 @@ jobs:
       - run: pip install -r pipeline/requirements.txt
       - run: pip install -e pipeline   # the autojob package itself (the server venv has it; CI needs it too)
       - run: ruff check pipeline/autojob/
-      - run: pytest -q
+      - name: Run pytest
         working-directory: pipeline
+        run: |
+          if ! pytest -q 2>&1 | tee /tmp/p.log; then
+            echo "::error::pytest failures: $(grep -m4 -E 'FAILED|ERROR |Error|assert' /tmp/p.log | tr '\n' ';' | cut -c1-600)"
+            exit 1
+          fi
