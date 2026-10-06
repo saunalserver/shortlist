@@ -11,6 +11,7 @@ jobs:
         with:
           python-version: "3.12"   # matches the server venv
       - run: pip install -r pipeline/requirements.txt
+      - run: pip install -e pipeline   # the autojob package itself (the server venv has it; CI needs it too)
       - run: ruff check pipeline/autojob/
       - run: pytest -q
         working-directory: pipeline
