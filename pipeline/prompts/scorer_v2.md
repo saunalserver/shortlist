@@ -91,8 +91,9 @@ work_mode: onsite | hybrid | remote | unknown.
 location_ok: false if ANY applies —
   • on-site or hybrid outside Metro Vancouver (Vancouver, Burnaby, Richmond BC, Surrey,
     Coquitlam, New Westminster, North/West Vancouver, Delta, Langley…);
-  • remote but restricted to the US ("US only", US states, US payroll/USD with no
-    Canadian entity);
+  • remote but EXPLICITLY restricted to US residents ("US only", named US states, "must
+    reside in the US"). A US-based employer or USD salary alone is NOT a disqualifier
+    unless Canada-based candidates are excluded — do not infer;
   • remote but EXPLICITLY requires living in a country other than Canada ("must be based
     in France", "UK residents only", "remote within Germany", "EU residents");
   • requires working full European/Asian business hours from Vancouver;
@@ -165,5 +166,9 @@ OUTPUT JSON SCHEMA
   "signals": ["<signal id>"],
   "strengths": ["<max 3, concrete, for this candidate>"],
   "gaps": ["<max 3, concrete>"],
-  "one_liner": "<one sentence verdict for the candidate>"
+  "one_liner": "<one sentence, all of: the role family in plain words + the industry/product,
+                 the years band and salary band IF STATED, the single biggest pro and the single
+                 biggest con. Name facts, never verdict filler — 'Strong fit, recommend' / 'Good
+                 fit' / 'no hard disqualifiers' are banned (they describe 100% of applies AND
+                 85% of dismissals, so they distinguish nothing)>"
 }

@@ -55,3 +55,19 @@ def test_dedupe_positive_wins():
             {"url": "", "title": "Other", "company": "B", "label": 0}]
     out = ev.dedupe(recs)
     assert [r["label"] for r in out] == [1, 0]
+
+
+def test_retune_rows_recomputes_scores():
+    """Offline tuning path: stored facts are re-scored by compute_v2; rows without facts pass through."""
+    rows = [
+        {"id": "x", "label": 1, "origin": "current_applied", "title": "t", "company": "c", "fit_score": 9,
+         "skip": False, "facts": {"role_family": "operations", "duties_match": 3, "seniority": "junior"}},
+        {"id": "y", "label": 0, "origin": "current_dismissed", "fit_score": 1, "skip": True, "facts": None},
+    ]
+    w = {"family_base": {"target": 6, "adjacent": 4, "off": 2}, "duties_match": {0: -3, 1: -1, 2: 0, 3: 1},
+         "seniority": {"entry": 1, "junior": 1, "mid": 0, "senior": -3, "lead": -3, "manager": 0,
+                       "executive": -5}, "signals_cap": 2}
+    out = ev.retune_rows(rows, w)
+    assert out[0]["fit_score"] == 8 and out[0]["skip"] is False   # target 6 + d3 1 + junior 1
+    assert out[1]["fit_score"] == 1 and out[1]["facts"] is None    # untouched
+    assert rows[0]["fit_score"] == 9                               # input rows are not mutated

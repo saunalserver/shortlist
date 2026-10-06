@@ -19,9 +19,13 @@ logger = logging.getLogger("autojob")
 MIN_FULL_DESCRIPTION = 200
 
 
-TARGET_FAMILIES = {"operations", "bizops_strategy", "revops_salesops_gtm", "growth_ops", "implementation_onboarding",
-                   "business_systems_analysis", "automation_ai_ops", "project_program_coord", "product_ops"}
-ADJACENT_FAMILIES = {"customer_success", "supply_chain_procurement", "data_analytics", "finance_ops",
+# 2026-10-06: implementation_onboarding and project_program_coord demoted from target — in the offline labels
+# they carry a 1:12 and 0:8 apply:top-band-dismissal ratio (coordination/onboarding work, not systems-building;
+# reports 01 §5, 06 §2.4). Target = the families the 18 applies actually live in.
+TARGET_FAMILIES = {"operations", "bizops_strategy", "revops_salesops_gtm", "growth_ops",
+                   "business_systems_analysis", "automation_ai_ops", "product_ops"}
+ADJACENT_FAMILIES = {"implementation_onboarding", "project_program_coord", "customer_success",
+                     "supply_chain_procurement", "data_analytics", "finance_ops",
                      "customer_support_ops", "marketing_execution"}
 # Off-target families that are never worth a look, whatever the other facts say.
 HARD_OFF_FAMILIES = {"software_engineering", "data_science_ml", "hr_recruiting", "trades_field_physical",
@@ -105,8 +109,8 @@ def compute_v2(facts: dict[str, Any], w: dict[str, Any]) -> dict[str, Any]:
     parts.append((f"duties {match}", int((w.get("duties_match") or {}).get(match, 0))))
     if seniority:
         parts.append((seniority, int((w.get("seniority") or {}).get(seniority, 0))))
-    if f.get("people_manager") is True:
-        parts.append(("manages people", int(w.get("people_manager", -2))))
+    if f.get("people_manager") is True:   # 2026-10-06: no penalty — 4 of 18 applies are manager-titled (report 01 §2.5)
+        parts.append(("manages people", int(w.get("people_manager", 0))))
     if years is not None:
         yw = w.get("years_required") or {}
         key = "le2" if years <= 2 else "eq3" if years == 3 else "eq4" if years == 4 else "ge5"

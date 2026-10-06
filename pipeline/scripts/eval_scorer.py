@@ -265,6 +265,20 @@ def metrics(rows: list[dict[str, Any]], threshold: int) -> dict[str, Any]:
     }
 
 
+def retune_rows(rows: list[dict[str, Any]], weights: dict[str, Any]) -> list[dict[str, Any]]:
+    """Re-run compute_v2 over stored facts with new weights — no API calls, no DB access.
+    Rows without facts (baseline v1 rows, errors) pass through untouched."""
+    from autojob.scorer import compute_v2
+
+    out = []
+    for r in rows:
+        if isinstance(r.get("facts"), dict):
+            res = compute_v2(r["facts"], weights)
+            r = {**r, "fit_score": res["fit_score"], "skip": res["skip"], "skip_reason": res["skip_reason"]}
+        out.append(r)
+    return out
+
+
 def baseline_rows(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """v1 scores already stored — no API calls. `skip` is unknown for them, so it is treated as False."""
     return [{"id": r["id"], "origin": r["origin"], "label": r["label"], "title": r["title"],
@@ -320,6 +334,25 @@ def cmd_report(args: argparse.Namespace) -> None:
         print_report(tag, metrics(rows, threshold), threshold)
 
 
+def cmd_retune(args: argparse.Namespace) -> None:
+    """Offline weight tuning: re-score a stored results file through compute_v2 with the CURRENT config
+    weights (scoring.v2 + the family tiers in scorer.py). Zero API calls — the facts are already in the
+    file, so this is the loop for tuning weights against the owner's apply/dismiss labels."""
+    from collections import Counter
+
+    from autojob.settings import get_settings
+
+    settings = get_settings()
+    weights = settings.get("scoring.v2", {}) or {}
+    threshold = args.threshold or int(settings.get("scoring.min_score_to_queue", 7))
+    for tag in args.tags:
+        rows = retune_rows(load_jsonl(EVAL_DIR / f"results-{tag}.jsonl"), weights)
+        m = metrics(rows, threshold)
+        print_report(f"{tag} retuned (current config weights, 0 API calls)", m, threshold)
+        pos_scores = Counter(r.get("fit_score") for r in rows if r["label"] == 1 and r.get("fit_score") is not None)
+        print("  positive scores:", " ".join(f"{s}×{n}" for s, n in sorted(pos_scores.items(), reverse=True)) or "n/a")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -334,8 +367,11 @@ def main() -> None:
     p = sub.add_parser("report", help="metrics per results tag")
     p.add_argument("tags", nargs="*")
     p.add_argument("--baseline", action="store_true", help="also report the stored v1 scores (no API calls)")
+    t = sub.add_parser("retune", help="offline: re-run compute_v2 over a stored results file's facts with config weights")
+    t.add_argument("tags", nargs="+", default=["v2-off"])
+    t.add_argument("--threshold", type=int, default=0, help="override scoring.min_score_to_queue for this report")
     args = ap.parse_args()
-    {"build": cmd_build, "run": cmd_run, "report": cmd_report}[args.cmd](args)
+    {"build": cmd_build, "run": cmd_run, "report": cmd_report, "retune": cmd_retune}[args.cmd](args)
 
 
 if __name__ == "__main__":

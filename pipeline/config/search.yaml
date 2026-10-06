@@ -55,18 +55,33 @@ queries:
   # "automation specialist" (in the Lower Mainland this is PLC / controls / building automation work).
 
 scoring:
+  # 2026-10-06 v2 THRESHOLD MATH (min_score_to_queue stays 7, now on the v2 scale):
+  #   Offline labels (328 rows, facts from data/eval/results-v2-off.jsonl, retuned with the v2 weights below):
+  #   positives {10×7, 9×3, 7, 6, 5, 3×2} → 11/15 clears 7; the 2 at 3 are legacy EU applies DQ'd by the
+  #   residency rule, the 6 and 5 are the only real losses. Hard negatives: 90/283 ≥7 (was 105 with old weights).
+  #   Queue adds/day: reviewed-population estimate = 16/day × (11+90)/298 = ~5/day floor (ignores v1-skipped
+  #   jobs v2 may now pass, e.g. 3–4-yr requirements v1 hard-skipped); naive labeled-fraction = 34% × 260 ≈ 80/day
+  #   ceiling (the labeled set is 91% v1-queued vs 6% live, so it over-samples ~15×). Expect 5–16/day; watch the
+  #   first live v2 digests — sustained >25/day → raise to 8, <6/day → consider 6 (v1 evidence: 0 applies ≤6 ever).
   min_score_to_queue: 7        # 2026-09-12: 6→7 — 0 applies ever at ≤6, queue was 60% unread 6s. Digest is threshold-driven, so it tightens too.
   # Docs are generated on demand from the dashboard only — no auto-generation (autodoc dropped 2026-09-07).
   # Scorer version. 1 = prompts/scorer.md (the model picks the score). 2 = prompts/scorer_v2.md: the model only
   # extracts facts (role family, duties match, seniority, years, contract, location, signals) and the score is
   # computed in code from `v2:` below — consistent across models, tunable from apply/dismiss data
-  # (scripts/eval_scorer.py). 2026-09-28: v1 put 139 jobs at 8 → 5 applied, 129 dismissed.
-  version: 1
+  # (scripts/eval_scorer.py).
+  # 2026-09-28: v1 put 139 jobs at 8 → 5 applied, 129 dismissed.
+  # 2026-10-06 FLIP TO v2 (reports 01+06): live v1 AUC collapsed to 0.519 post-0928 (was 0.858), zero 9–10
+  # scores in 1636 paid-chain scores (best band unreachable), 4.5× queue-rate gap between models because v1
+  # lets each model pick its own number. v2 = same facts → same score on any model. Offline AUC 0.809 → 0.821
+  # with the 2026-10-06 weights below (`eval_scorer.py retune`); top fits reach 9–10 again (7×10, 3×9 offline).
+  version: 2
   v2:
-    family_base: { target: 6, adjacent: 4, off: 2 }
+    family_base: { target: 6, adjacent: 4, 'off': 2 }   # 'off' quoted: bare off parses as YAML false (was silently defaulting to the same 2)
     duties_match: { 0: -3, 1: -1, 2: 0, 3: 1 }        # how squarely the day-to-day is the candidate's work
-    seniority: { entry: 1, junior: 1, mid: 0, senior: -3, lead: -3, manager: -1, executive: -5 }
-    people_manager: -2
+    seniority: { entry: 1, junior: 1, mid: 0, senior: -3, lead: -3, manager: 0, executive: -5 }
+    # 2026-10-06: manager 0 and people_manager penalty dropped (was -1/-2) — 4 of 18 applies are manager-titled
+    # (Operations Manager BC, Client Success Manager, Associate PM, PM). senior/lead/executive penalties stay:
+    # 'fake-junior senior' was a real misfire class (report 01 §4.1).
     years_required: { le2: 1, eq3: 0, eq4: -1, ge5: -3 }   # ignored when not stated
     missing_must_have: -1                             # per missing hard requirement, max 2
     signals_cap: 2                                    # automation_ai, bilingual_french, tool_overlap, early_career…
