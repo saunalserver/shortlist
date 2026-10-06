@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.5.0 — 2026-10-06 (observation review: throughput + discrimination overhaul)
+
+Six-agent read-only review (`pipeline/docs/REVIEW-2026-10-06/`, findings + plan in `00-FINDINGS-AND-PLAN.md`),
+then Phases 0–2 implemented same day.
+
+- **Scoring flipped to v2** (report 06): live v1 AUC had collapsed to 0.519 (was 0.858 pre-0928), zero 9–10
+  scores in 1,636 paid-chain scores, 4.5× queue-rate gap between chain models. Facts extracted by the model,
+  score computed in code — model-independent. Weights retuned offline on the 328-label set (AUC 0.809 → 0.821,
+  zero API spend): coordinator/onboarding families demoted target→adjacent, manager penalties dropped
+  (4/18 applies manager-titled), USD-comp DQ dropped (only explicit US-residency exclusions DQ), one-liner
+  boilerplate banned. 9–10 band reachable again (offline positives 10×7, 9×3). Threshold stays 7 (v2 scale,
+  math in `search.yaml`). Live-soak checklist: `docs/REVIEW-2026-10-06/impl-C-scoring.md` §8.
+- **Prefilter bugs fixed** (report 05): "Remote, CA" parsed as California (281 rows killed, 0 ever scored);
+  `remote is True` vs SQLite int 1 (504 remote-flagged jobs mis-killed). 927 mis-killed rows requeued to
+  `new` for re-prefilter/scoring. Supply-chain title carve-out: planner/buyer/scheduler pass when paired
+  with supply/demand/procurement/logistics/inventory/replenishment/load markers.
+- **Company blocklist**: ≥2 deliberate dismissals (score ≥7) at the same company skips its future postings
+  (28 companies live-blocked as of 2026-10-06).
+- **Digest rebuilt**: no re-shows of acted jobs; window bounded at prev `finished_at`; 14-day-stale and
+  low-confidence rows excluded (0/41 lifetime applies from low-conf); composite ranking
+  (score + source prior + freshness − company history); "N pending retire within 3 days" line.
+- **Review loop** (dashboard): keyboard triage (j/k/a/d, 1–7 reasons, auto-advance), one-tap dismiss reasons
+  (new `jobs.dismiss_reason`), 14-day demote (live "To review" ≈56 not 236), low-conf sort-last, apply
+  idempotency + rollback + unwedgeable UI, pending-commands badge, `score_facts` chips, tracker status
+  chips + companies + honest source slugs.
+- **Hardening**: LLM circuit breaker (10 consecutive failures stop the run), per-scrape commits (kills the
+  ~15-min SQLITE_BUSY window), orphaned-run sweep, atomic command claim, worker docs no longer consumes
+  the run abort flag, zero-fetch sources flagged in `source_runs.error`, `expire()` clock injection
+  (test suite had been red since 09-30), CI (ruff + pytest), lint baseline fixed. Tests 126 → 146.
+- **Sources**: amazon + jooble disabled (dead weight per funnel audit: 18k fetches → 4 queued → 0 applied;
+  60 req/day against a 500-lifetime key for ~2% new).
+- **Ops**: daily consistent DB snapshots (`shortlist-db-backup.timer` 13:30 PDT, 14-day retention) + weekly
+  cloud-backup now uses them; tracker RPO 7d → 1d.
+
 ## 2.4.0 — 2026-09-29 (paid-first scoring + free-quota probe)
 
 - **Scoring chain reordered paid-first** (owner call): `nemotron-3.5-lightning` primary (~$0.0003/call, 356 t/s,
