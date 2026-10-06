@@ -520,11 +520,37 @@ prefilter:
   company_blocklist:
     enabled: true
     min_dismissals: 2
+  # 2026-10-06 (owner): hard-block edu/gov/nonprofit employers — 0/18 applies vs 17/290 deliberate
+  # dismissals (report 01 §2.5). Substring match on the company name; tuned so that none of the 18 applied
+  # companies matches (verified 2026-10-06). Add/remove words freely — kills show as prefilter_reason "employer: <word>".
+  employer_block_words:
+    - university
+    - college
+    - school
+    - institute
+    - ministry
+    - government
+    - city of
+    - district of
+    - municipality
+    - health authority
+    - authority
+    - society
+    - foundation
+    - food bank
+    - association
+    - nonprofit
+    - non-profit
+    - crown corporat
+    - public service
+    - school district
+    - school board
   location:
     # Rules, in order (see autojob/prefilter.py):
     #  1. one of deny_cities, on-site (no "remote" wording), and not also naming the Vancouver area → drop
     #     — even when the string also says "Canada" ("Toronto, Ontario, Canada" is Toronto).
-    #  2. US-only markers, US states or deny_us_cities without any Canadian place name → drop (remote too).
+    #  2. US: on-site/hybrid US and explicit US-residency restrictions drop; REMOTE US-based jobs pass
+    #     (2026-10-06 owner call: US-remote is fine when doable from Canada; scorer DQs residency pins).
     #  3. deny_countries without a Canadian/global keyword → drop ("Remote - EMEA").
     # Empty locations always pass.
     deny_cities:
@@ -569,7 +595,8 @@ prefilter:
       - brampton
       - north york
       - scarborough
-    deny_us: true
+    deny_us: true                # 2026-10-06 (owner): still true — but rule 2 now PASSES remote US-based jobs
+                                 # (doable from Canada) and keeps killing on-site/hybrid US + US-residency pins.
     deny_us_cities:              # whole-word match; only used when no Canadian place is named
       - san francisco
       - bay area
@@ -625,6 +652,9 @@ prefilter:
     # 2026-09-28 user: remote jobs from France/Europe are welcome if doable from Vancouver; when the posting
     # can't tell, keep it. So a REMOTE job naming only these (office location, most likely) passes rule 3;
     # on-site ones are still dropped, and region tags (europe/emea) stay dropped — those ARE residency rules.
+    # 2026-10-06 user: US-remote is also in policy when doable from Canada — prefilter rule 2 now passes
+    # remote US-based jobs through to the scorer and keeps killing on-site/hybrid US + explicit US-residency
+    # restrictions (US_RESIDENCY_MARKERS in prefilter.py).
     remote_ok_countries: [france, paris, united kingdom, uk, london, ireland, germany, berlin, spain, portugal,
                           netherlands, belgium, italy, switzerland, austria, sweden, denmark, norway, finland,
                           poland, czech, lyon, marseille, toulouse, bordeaux, lille, nantes, montpellier, dublin,

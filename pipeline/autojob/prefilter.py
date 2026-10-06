@@ -41,6 +41,13 @@ US_ONLY_MARKERS = (
     "us-remote", "us remote", "remote - us", "remote (us)", "remote, us", "remote us", "remote in us", "remote in the us",
     "remote-us", "remote (usa)", "remote usa", "usa remote", "united states", " usa", "u.s.", "(us)", "us-",
 )
+# 2026-10-06 (owner): US-remote is in policy WHEN DOABLE FROM CANADA. These state an actual residency /
+# work-authorization restriction, so they stay hard kills even for remote jobs; everything else US only
+# kills on-site/hybrid postings — a remote US-based job passes through to the scorer, which DQs residency pins.
+US_RESIDENCY_MARKERS = (
+    "us only", "u.s. only", "must reside in the us", "must reside in the usa", "us residents only",
+    "authorized to work in the us", "work authorization for the us", "us citizens only",
+)
 # Any of these means the posting is (or includes) Canada / the candidate's area → never dropped for location.
 CANADA_MARKERS = ("canada", "canadian", "vancouver", "burnaby", "richmond", "surrey", "coquitlam", "new westminster",
                   "langley", "british columbia", ", bc", " bc ", " bc,", " bc)")
@@ -100,6 +107,8 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
     local = is_local(padded)
     says_remote = bool(remote) or any(k in padded for k in REMOTE_MARKERS)   # SQLite hands us int 1, not True
     global_ok = any(k in padded for k in GLOBAL_MARKERS)
+    # hybrid/partial wording = must sometimes be on site somewhere — not remote-doable from Vancouver
+    partial = re.search(r"hybrid|hybride|partiel|partial|occasional|ponctuel", loc)
 
     # 1. Another Canadian city, on-site (no remote wording) → drop, unless the posting also names our area.
     if not says_remote and not local:
@@ -107,18 +116,23 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
             if city.lower() in loc:
                 return f"location: {city}"
 
-    # 2. United States, unless Canada is named as well.
+    # 2. United States. 2026-10-06 (owner): US-remote is acceptable when doable from Canada — a remote
+    #    US-based job passes to the scorer (which hard-DQs explicit US-residency pins); on-site/hybrid US
+    #    and explicit residency restrictions still die here.
     if loc_cfg.get("deny_us", True) and not canada:
-        if any(p in padded for p in US_ONLY_MARKERS):
+        if any(p in padded for p in US_RESIDENCY_MARKERS):
             return "location: US only"
-        if any(re.search(rf"\b{re.escape(n)}\b", loc) for n in _US_STATE_NAMES):
-            return "location: United States"
-        city = _has_word(loc, tuple(loc_cfg.get("deny_us_cities", []) or []))
-        if city:
-            return f"location: {city} (US)"
-        m = re.search(r",\s*([a-z]{2})(?:\s+\d{5})?\s*$", loc)   # "City, ST" or "City, ST 12345"
-        if m and m.group(1) in _US_STATES and m.group(1) not in _CA_PROVINCES:
-            return "location: United States"
+        if not (says_remote and not partial):
+            if any(p in padded for p in US_ONLY_MARKERS):
+                return "location: US only"
+            if any(re.search(rf"\b{re.escape(n)}\b", loc) for n in _US_STATE_NAMES):
+                return "location: United States"
+            city = _has_word(loc, tuple(loc_cfg.get("deny_us_cities", []) or []))
+            if city:
+                return f"location: {city} (US)"
+            m = re.search(r",\s*([a-z]{2})(?:\s+\d{5})?\s*$", loc)   # "City, ST" or "City, ST 12345"
+            if m and m.group(1) in _US_STATES and m.group(1) not in _CA_PROVINCES:
+                return "location: United States"
 
     # 3. Pinned to another country/region. A *remote* job naming only European countries/cities is kept
     #    (remote_ok_countries): a bare "Remote — Paris, France" is usually the office, not a residency rule,
@@ -128,7 +142,6 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
         hits = _all_words(loc, tuple(loc_cfg.get("deny_countries", []) or []))
         if hits:
             ok = {c.lower() for c in loc_cfg.get("remote_ok_countries", []) or []}
-            partial = re.search(r"hybrid|hybride|partiel|partial|occasional|ponctuel", loc)
             if says_remote and not partial and all(h in ok for h in hits):
                 return None
             return f"location: {hits[0]}"
@@ -144,6 +157,14 @@ def prefilter_reason(job: dict[str, Any], cfg: dict[str, Any],
 
     if company_blocklist and company_key(job.get("company")) in company_blocklist:
         return "company_blocklist"
+
+    # 2026-10-06 (owner): hard-block edu/gov/nonprofit employers — 0/18 applies vs 17/290 deliberate
+    # dismissals (report 01 §2.5; validated against all 18 applied companies: zero matches). Substring
+    # match on the company name; the word list lives in search.yaml (employer_block_words) for tuning.
+    company = (job.get("company") or "").lower()
+    for w in cfg.get("employer_block_words", []) or []:
+        if w and w in company:
+            return f"employer: {w}"
 
     lower_title = title.lower()
     protected = any(p.lower() in lower_title for p in cfg.get("title_allow_phrases", []) or [])

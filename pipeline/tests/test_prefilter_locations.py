@@ -26,13 +26,16 @@ def test_multi_city_posting_naming_vancouver_is_kept():
 
 
 def test_remote_jobs_still_get_the_us_check():
-    assert location_reason("Remote - Houston", LOC, remote=True) == "location: houston (US)"
-    assert location_reason("Chicago, IL, Flexible / Remote", LOC, remote=True) == "location: chicago (US)"
+    # 2026-10-06 owner call: US-remote passes when doable from Canada; on-site/hybrid US + residency pins die
+    assert location_reason("Remote - Houston", LOC, remote=True) is None
+    assert location_reason("Chicago, IL, Flexible / Remote", LOC, remote=True) is None
     assert location_reason("HQ - San Francisco, CA, New York", LOC) == "location: United States"
-    assert location_reason("Remote - United States", LOC, remote=True) == "location: US only"
+    assert location_reason("Remote - United States", LOC, remote=True) is None
     assert location_reason("Remote - Canada; Remote - US", LOC, remote=True) is None
     assert location_reason("Canada, United States", LOC, remote=True) is None
     assert location_reason("Remote NA", LOC, remote=True) is None
+    assert location_reason("Remote - Houston (Hybrid)", LOC, remote=True) is not None
+    assert location_reason("Remote - US only", LOC, remote=True) == "location: US only"
 
 
 def test_foreign_regions_are_dropped_unless_canada_or_global():
@@ -44,7 +47,7 @@ def test_foreign_regions_are_dropped_unless_canada_or_global():
 
 
 def test_prefilter_passes_remote_flag_through():
-    assert prefilter_reason(job(location="Remote - Houston", remote=True), CFG) == "location: houston (US)"
+    assert prefilter_reason(job(location="Remote - Houston", remote=True), CFG) is None
     assert prefilter_reason(job(location="Remote", remote=True), CFG) is None
     assert prefilter_reason(job(location="", remote=None), CFG) is None
 

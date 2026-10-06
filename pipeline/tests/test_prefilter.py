@@ -83,9 +83,48 @@ def test_location_rules():
     assert prefilter_reason(job(location="Burnaby, British Columbia"), CFG) is None
     assert prefilter_reason(job(location=""), CFG) is None
     assert prefilter_reason(job(location="Québec, QC"), CFG) == "location: québec"
-    # since 2026-09-02 a "remote" job pinned to a US city is dropped too — "Seattle, WA (remote)" means US-remote
-    assert prefilter_reason(job(location="Seattle, WA", remote=True), CFG) == "location: seattle (US)"
+    # 2026-09-02 rule + 2026-10-06 owner call: US-remote is now in policy when doable from Canada —
+    # a remote US-based job passes (see test_us_remote_policy_2026_10_06); on-site US still drops
+    assert prefilter_reason(job(location="Seattle, WA", remote=True), CFG) is None
     assert prefilter_reason(job(location="Remote (Canada or US)", remote=True), CFG) is None
-    assert prefilter_reason(job(location="San Francisco, New York, Remote in US"), CFG) == "location: US only"
-    assert prefilter_reason(job(location="US-Remote"), CFG) == "location: US only"
+    assert prefilter_reason(job(location="San Francisco, New York, Remote in US"), CFG) is None
+    assert prefilter_reason(job(location="US-Remote"), CFG) is None
     assert prefilter_reason(job(location="Chicago, US-Remote, Canada-Remote"), CFG) is None
+
+
+def test_us_remote_policy_2026_10_06():
+    """Owner call 2026-10-06: US-remote acceptable when doable from Canada. Remote US-based jobs pass to
+    the scorer (which DQs explicit US-residency pins); on-site/hybrid US and residency restrictions die."""
+    lr = CFG["location"]
+    # remote US-based → pass
+    assert location_reason("Seattle, WA", lr, remote=1) is None
+    assert location_reason("Austin, TX (Remote)", lr) is None
+    assert location_reason("Remote, US", lr, remote=1) is None
+    assert location_reason("Remote - United States", lr, remote=1) is None
+    assert location_reason("US-Remote", lr) is None
+    # on-site / hybrid US → still dead
+    assert location_reason("Austin, TX", lr) == "location: austin (US)"
+    assert location_reason("New York, NY 10001", lr) == "location: United States"
+    assert location_reason("San Francisco, CA", lr) == "location: san francisco (US)"
+    assert location_reason("New York, NY (Hybrid)", lr, remote=1) is not None
+    # explicit US-residency restrictions → dead even when remote
+    assert location_reason("Remote - US only", lr, remote=1) == "location: US only"
+    assert location_reason("Remote (US residents only)", lr, remote=1) == "location: US only"
+    assert location_reason("Remote — must reside in the US", lr, remote=1) == "location: US only"
+
+
+def test_employer_block_words_2026_10_06():
+    """Owner call 2026-10-06: hard-block edu/gov/nonprofit employers (0/18 applies vs 17/290 dismissals).
+    Word list validated against all 18 applied companies — zero matches."""
+    assert prefilter_reason(job(company="University of British Columbia"), CFG) == "employer: university"
+    assert prefilter_reason(job(company="Trinity Western University"), CFG) == "employer: university"
+    assert prefilter_reason(job(company="Canadian Cancer Society"), CFG) == "employer: society"
+    assert prefilter_reason(job(company="Fraser Health Authority"), CFG) == "employer: health authority"
+    assert prefilter_reason(job(company="City of Surrey"), CFG) == "employer: city of"
+    assert prefilter_reason(job(company="College of Physicians and Surgeons of BC"), CFG) == "employer: college"
+    # none of the applied-class employers trips a word
+    assert prefilter_reason(job(company="ZayZoon"), CFG) is None
+    assert prefilter_reason(job(company="7shifts"), CFG) is None
+    assert prefilter_reason(job(company="Super.com"), CFG) is None
+    assert prefilter_reason(job(company=None), CFG) is None
+    assert prefilter_reason(job(company=""), CFG) is None
