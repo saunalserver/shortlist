@@ -12,6 +12,7 @@ import logging
 import re
 import sqlite3
 import time
+from datetime import datetime
 from typing import Any
 
 import requests
@@ -56,9 +57,10 @@ def check_link(url: str) -> str | None:
 
 
 def expire(conn: sqlite3.Connection, *, posted_max_days: int = 30, fetched_max_days: int = 45,
-           link_checks: int = 0, dry_run: bool = False) -> dict[str, Any]:
-    """Run the age rule, then up to ``link_checks`` page checks. Returns counts and the affected ids."""
-    by_age = D.stale_by_age(conn, posted_max_days, fetched_max_days)
+           link_checks: int = 0, dry_run: bool = False, today: datetime | None = None) -> dict[str, Any]:
+    """Run the age rule, then up to ``link_checks`` page checks. Returns counts and the affected ids.
+    ``today`` injects the clock (tests use a fixed date; production leaves it as now)."""
+    by_age = D.stale_by_age(conn, posted_max_days, fetched_max_days, today=today)
     expired: list[tuple[int, str]] = list(by_age)
     for jid, reason in by_age:
         if not dry_run:

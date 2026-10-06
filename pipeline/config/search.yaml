@@ -122,6 +122,30 @@ expiry:
   fetched_max_days: 45         # no posting date → count from the day autojob first saw it
   link_checks_per_run: 60      # active postings whose page is fetched per run (404 / "no longer accepting")
 
+# Digest ranking (2026-10-06, plan item 19): the twice-daily Telegram digest ranks by expected apply, not
+# raw score-desc — rank = fit_score + source_prior + freshness bonus − low_confidence penalty − company
+# dismissal count. Jobs scored more than 14 days ago and low_confidence rows are left OUT of the digest
+# (report 06: nothing unreviewed past ~6 days has ever been applied; low_confidence is 0/41 lifetime) —
+# they stay visible in the dashboard queue. Top-15 cap unchanged.
+digest_ranking:
+  freshness_bonus: 1.0        # full at ≤ 3 days since scored_at, linear decay to 0 at 14 days
+  low_confidence_penalty: 1.0
+  # Source priors = apply rate among reviewed jobs (applied vs deliberate dismissals at score ≥ 7),
+  # scaled to quarter points against the best source. Recompute monthly (next ~2026-11-06):
+  #   sqlite3 -readonly data/autojob.db "SELECT source, SUM(user_action='applied') ap,
+  #     SUM(user_action='dismissed' AND fit_score>=7) dis FROM jobs
+  #     WHERE user_action IS NOT NULL GROUP BY source"
+  # 2026-10-06 rates: serper 4/36 · ats_companies 2/20 · wttj 1/4 · adzuna 2/31 · boards 6/125 ·
+  # himalayas 2/48 · jooble 0/26 · workday 0/24 · eluta 0/15
+  source_priors:
+    serper: 1.0               # 11.1% of 36 reviewed — best with a real sample
+    ats_companies: 1.0        # 10.0% of 20, and cheapest per queued job (3.6 LLM/queued)
+    wttj: 0.75                # 25% of only 4 reviewed — promising, sample too small to crown
+    adzuna: 0.5               # 6.5% of 31
+    boards: 0.5               # 4.8% of 125
+    himalayas: 0.25           # 4.2% of 48
+    # every source not listed (jooble, workday, eluta, hn, …) has 0 applies → prior 0.0
+
 # Cheap rule-based rejection BEFORE any LLM call. High precision only — the LLM handles nuance.
 prefilter:
   # Titles containing one of these are never dropped by the title rules below ("chief" and "staff" are
@@ -132,6 +156,12 @@ prefilter:
     - chef·fe de projet
     - operations executive        # UK/EU junior title ("executive" is an excluded word)
     - chief of staff
+  # 2026-10-06 review (report 05 §2): planner/buyer/scheduler are excluded words (mostly manufacturing /
+  # retail noise), but 28–36% of their kills were the supply-chain family the 09-06 queries target. When the
+  # title ALSO names the supply-chain function (title_sc_markers), only those three words stop being
+  # exclusions — senior/director/contract… still kill. "Supply Chain Buyer II" passes, "Media Buyer" dies.
+  title_sc_words: [planner, buyer, scheduler]
+  title_sc_markers: [supply, demand, inventory, procurement, logistics, replenishment, load]
   title_exclude_words:            # whole-word match, case-insensitive
     - senior
     - sr
@@ -469,6 +499,12 @@ prefilter:
                             cdd, intérim, interim, stage, alternance, apprentissage, "temps partiel"]   # FR 2026-09-28   # full-time permanent only
   max_posted_age_days: 30         # a posting already older than this when first seen is not worth an LLM call
                                   # (remote boards keep listings up for months; matches expiry.posted_max_days)
+  # 2026-10-06 (plan item 18): companies with ≥ min_dismissals DELIBERATE dismissals (dismissed at score ≥ 7 —
+  # the only bulk wipe in history was 301 score-6 rows, so this excludes it) are auto-skipped with
+  # prefilter_reason "company_blocklist". Set is computed once per run, not per job (db.company_dismissal_counts).
+  company_blocklist:
+    enabled: true
+    min_dismissals: 2
   location:
     # Rules, in order (see autojob/prefilter.py):
     #  1. one of deny_cities, on-site (no "remote" wording), and not also naming the Vancouver area → drop
@@ -699,7 +735,8 @@ sources:
     results_per_page: 50
     max_days_old: 7
   jooble:                      # free key, 500 requests LIFETIME (not monthly — verified with Jooble docs)
-    enabled: true               # keys are free & swappable (scripts/jooble_key.sh set <KEY>) — no reason to ration
+    enabled: false              # 2026-10-06: 60 req/day burns a lifetime key in ~1 week for ~2% new rows,
+                               # 0 applied, last queue contribution 09-15 — off until supply refreshes
     passes:                    # 2026-09-06: 6→30 requests/run, full 30-query master list, split across geos (~60/day → key dead in ~1wk)
       - { location: "Vancouver, BC", radius_km: 50, max_queries: 15 }
       - { location: Canada, query_offset: 15, max_queries: 15 }   # API has no remote filter — non-remote rows die in the prefilter
@@ -772,7 +809,7 @@ sources:
       - remote-product-jobs
 
   amazon:                     # amazon.jobs public JSON (no key, full descriptions inline — zero scrapes)
-    enabled: true
+    enabled: false              # 2026-10-06: 18k fetches → 381 new → 4 queued (1.05%) → 0 applied, 16 LLM/queued — worst yield per call in the funnel
     result_limit: 100
     pages: 2
     passes:                    # 2026-09-08 "both": local + Canada-wide (API has no remote flag; prefilter kills on-site non-Vancouver)

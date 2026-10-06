@@ -64,6 +64,27 @@ def test_parallel_scoring_writes_all_results(tmp_path, monkeypatch):
     assert {r["scorer_model"] for r in rows} == {"fake-model"}
 
 
+def test_llm_circuit_breaker_stops_the_run(tmp_path, monkeypatch):
+    """Report 03 Bug 5: a hard-down provider must not grind the run to the 8 h systemd cap."""
+    class DeadScorer:
+        def __init__(self, settings, llm):
+            pass
+
+        def score(self, job):
+            return None
+
+    monkeypatch.setattr("autojob.scorer.Scorer", DeadScorer)
+    conn, jobs = _setup(tmp_path, 30)
+    summary = P.RunSummary(run_id=1, dry_run=False)
+    P.score_jobs(_Settings(2), conn, jobs, _LLM(), summary)
+    assert 10 <= summary.scored <= 12     # stops at the 10th consecutive failure (+ in-flight batch remainder)
+    assert summary.errors == summary.scored
+    assert "circuit breaker" in summary.notes
+    new = conn.execute("SELECT count(*) FROM jobs WHERE status = ?", (D.STATUS_NEW,)).fetchone()[0]
+    assert new == 30 - summary.scored     # unstarted jobs stay 'new' for the next run
+    assert summary.as_row()["notes"] == summary.notes   # lands in the runs row
+
+
 def test_budget_stops_and_leaves_rest_new(tmp_path, monkeypatch):
     lock = threading.Lock()
     state = {"n": 0}

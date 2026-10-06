@@ -1,6 +1,6 @@
 import yaml
 
-from autojob.prefilter import prefilter_reason
+from autojob.prefilter import location_reason, prefilter_reason
 from autojob.settings import ROOT
 
 CFG = yaml.safe_load((ROOT / "config" / "search.yaml").read_text())["prefilter"]
@@ -10,6 +10,46 @@ def job(**kw):
     base = {"title": "Operations Coordinator", "location": "Vancouver, BC", "employment_type": None, "remote": None}
     base.update(kw)
     return base
+
+
+def test_remote_ca_is_remote_canada_not_california():
+    # report 05 §2 Bug A: boards' Canada remote_only pass writes exactly "Remote, CA" — the trailing CA
+    # parsed as California, all 281 such rows prefiltered, 0 ever scored.
+    assert prefilter_reason(job(location="Remote, CA", remote=1), CFG) is None
+    assert location_reason("Remote, CA", CFG["location"], remote=1) is None
+    assert location_reason("Remote - CA", CFG["location"], remote=1) is None
+    # genuine US cities with CA keep dying
+    assert location_reason("San Francisco, CA", CFG["location"]) == "location: san francisco (US)"
+    assert location_reason("Los Angeles, CA", CFG["location"]) == "location: los angeles (US)"
+    assert location_reason("Fresno, CA", CFG["location"]) == "location: United States"
+
+
+def test_source_remote_flag_counts_as_remote_wording():
+    # report 05 §2 Bug B: `remote is True` never fired on SQLite's int 1 — 504 remote-flagged jobs died on
+    # deny-city rules (toronto 191, montréal 59, calgary 52 …)
+    assert location_reason("Toronto, ON", CFG["location"], remote=1) is None
+    assert location_reason("Toronto, ON", CFG["location"], remote=0) == "location: toronto"
+    assert prefilter_reason(job(location="Montréal, QC", remote=1), CFG) is None
+
+
+def test_supply_chain_title_carve_out():
+    # planner/buyer/scheduler pass when paired with a supply-chain function word (title_sc_* in search.yaml)
+    assert prefilter_reason(job(title="Supply Chain Buyer II"), CFG) is None
+    assert prefilter_reason(job(title="Demand Planner"), CFG) is None
+    assert prefilter_reason(job(title="Logistics Coordinator (Scheduler)"), CFG) is None
+    # without the function word they stay dead
+    assert prefilter_reason(job(title="Media Buyer"), CFG) == "title: buyer"
+    assert prefilter_reason(job(title="Appointment Scheduler"), CFG) == "title: scheduler"
+    assert prefilter_reason(job(title="Production Planner"), CFG) == "title: planner"
+    # the carve-out lifts only those three words — every other title rule still applies
+    assert prefilter_reason(job(title="Senior Demand Planner"), CFG) == "title: senior"
+    assert prefilter_reason(job(title="Supply Chain Buyer (Contract)"), CFG) == "title: (contract"
+
+
+def test_company_blocklist_skips_repeat_offenders():
+    assert prefilter_reason(job(company="Acme Inc"), CFG, {"acme"}) == "company_blocklist"
+    assert prefilter_reason(job(company="Acme Inc"), CFG, set()) is None
+    assert prefilter_reason(job(company="Other Co"), CFG, {"acme"}) is None
 
 
 def test_keeps_target_role():

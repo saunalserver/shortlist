@@ -55,10 +55,12 @@ def test_fresh_db_and_commands(tmp_path):
     p = tmp_path / "b.db"
     D.init_db(p)
     with D.db(p) as conn:
+        # additive column (report 04): dashboard writes dismiss reasons in parallel
+        assert "dismiss_reason" in D._columns(conn, "jobs")
         cid = D.enqueue_command(conn, "docs", "42")
         cmd = D.claim_next_command(conn)
         assert cmd["id"] == cid and cmd["command"] == "docs"
-        assert D.claim_next_command(conn) is None
+        assert D.claim_next_command(conn) is None   # claimed row is no longer pending → guarded UPDATE misses
         D.finish_command(conn, cid, "done", "ok")
         rid = D.start_run(conn, dry_run=False)
         D.finish_run(conn, rid, "done", fetched=10, new_jobs=3)
@@ -66,3 +68,36 @@ def test_fresh_db_and_commands(tmp_path):
         D.set_pipeline_state(conn, command="abort")
         assert D.consume_abort(conn) is True
         assert D.consume_abort(conn) is False
+
+
+def test_orphaned_runs_are_swept(tmp_path):
+    p = tmp_path / "o.db"
+    D.init_db(p)
+    with D.db(p) as conn:
+        dead = D.start_run(conn, dry_run=False)          # process "died" — status still 'running'
+        current = D.start_run(conn, dry_run=False)
+        assert D.sweep_orphaned_runs(conn, current) == 1
+        assert D.sweep_orphaned_runs(conn, current) == 0  # idempotent
+        rows = {r["id"]: dict(r) for r in conn.execute("SELECT * FROM runs")}
+        assert rows[dead]["status"] == "error"
+        assert "orphaned" in rows[dead]["notes"] and rows[dead]["finished_at"]
+        assert rows[current]["status"] == "running"      # the live run is untouched
+
+
+def test_company_dismissal_counts_exclude_bulk_wipe(tmp_path):
+    p = tmp_path / "c.db"
+    D.init_db(p)
+    with D.db(p) as conn:
+        ids, _, _ = D.insert_jobs(conn, [
+            RawJob(url="https://x/1", title="Ops A", company="Acme Inc", source="boards"),
+            RawJob(url="https://x/2", title="Ops B", company="ACME", source="serper"),     # same company key
+            RawJob(url="https://x/3", title="Ops C", company="Acme Ltd", source="boards"),
+            RawJob(url="https://x/4", title="Ops D", company="Beta", source="boards"),
+            RawJob(url="https://x/5", title="Ops E", company="Gamma", source="boards"),   # second offender
+        ], run_id=None)
+        for i in (0, 1):
+            D.update_job(conn, ids[i], user_action="dismissed", fit_score=8)     # deliberate
+        D.update_job(conn, ids[2], user_action="dismissed", fit_score=6)         # bulk-wipe row — not deliberate
+        D.update_job(conn, ids[3], user_action="applied", fit_score=8)
+        D.update_job(conn, ids[4], user_action="dismissed", fit_score=7)
+        assert D.company_dismissal_counts(conn) == {"acme": 2, "gamma": 1}

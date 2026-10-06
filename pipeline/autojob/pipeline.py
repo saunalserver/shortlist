@@ -26,6 +26,9 @@ from autojob.settings import LOCK_PATH, LOG_PATH, Settings, ensure_dirs
 
 logger = logging.getLogger("autojob")
 
+LLM_FAILURE_STOP = 10   # consecutive failed scores that stop the run — a hard-down provider must not
+                         # grind the run to the 8 h systemd cap
+
 
 class Aborted(Exception):
     pass
@@ -54,10 +57,14 @@ class RunSummary:
     expired: int = 0
     per_source: dict[str, dict[str, Any]] = field(default_factory=dict)
     status: str = "running"
+    notes: str = ""
 
     def as_row(self) -> dict[str, Any]:
-        return {k: getattr(self, k) for k in ("fetched", "new_jobs", "prefiltered", "scored", "queued", "skipped",
-                                              "docs", "errors", "llm_calls", "expired")}
+        row = {k: getattr(self, k) for k in ("fetched", "new_jobs", "prefiltered", "scored", "queued", "skipped",
+                                             "docs", "errors", "llm_calls", "expired")}
+        if self.notes:
+            row["notes"] = self.notes
+        return row
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -144,6 +151,10 @@ def fetch_all(settings: Settings, conn, run_id: int, only: list[str] | None, sum
         for j in got:
             j.source = j.source or name
         jobs.extend(got)
+        if err is None and not got:
+            # fetchers that swallow HTTP errors come back as 0 rows with no signal (eluta precedent:
+            # bot-wall page → HTTP 200 → 0 parsed) — make a dead source visible in source_runs.error
+            err = "warning: 0 rows fetched — source dead or blocked?"
         summary.per_source[name] = {"fetched": len(got), "duration_s": round(dur, 1), "error": err, "started_at": started}
         logger.info("[%s] %d jobs in %.0fs", name, len(got), dur)
     summary.fetched = len(jobs)
@@ -167,11 +178,12 @@ def insert(conn, jobs: list[RawJob], run_id: int, summary: RunSummary) -> list[i
     return new_ids
 
 
-def prefilter(settings: Settings, conn, jobs: list[dict[str, Any]], summary: RunSummary) -> list[dict[str, Any]]:
+def prefilter(settings: Settings, conn, jobs: list[dict[str, Any]], summary: RunSummary,
+              blocked_companies: set[str] | None = None) -> list[dict[str, Any]]:
     cfg = settings.get("prefilter", {}) or {}
     keep: list[dict[str, Any]] = []
     for j in jobs:
-        reason = prefilter_reason(j, cfg)
+        reason = prefilter_reason(j, cfg, blocked_companies)
         if reason:
             D.update_job(conn, j["id"], status=D.STATUS_PREFILTERED, prefilter_reason=reason, processed_at=D.now_iso())
             summary.prefiltered += 1
@@ -196,7 +208,8 @@ def scrape_missing(settings: Settings, conn, jobs: list[dict[str, Any]], summary
             D.update_job(conn, j["id"], **fields)
             j.update(fields)
             summary.scraped += 1
-    conn.commit()
+            conn.commit()   # per scrape, like expire.py's per-link commit: never hold a write txn across the
+                            # whole ~600-job loop — dashboard Apply/Dismiss clicks hit SQLITE_BUSY during it
     logger.info("scraped %d descriptions", summary.scraped)
 
 
@@ -223,6 +236,7 @@ def score_jobs(settings: Settings, conn, jobs: list[dict[str, Any]], llm: LLM, s
     running: dict[Future, dict[str, Any]] = {}
     stop = False
     done_count = 0
+    consecutive_failures = 0
     ex = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="score")
     try:
         while True:
@@ -255,7 +269,14 @@ def score_jobs(settings: Settings, conn, jobs: list[dict[str, Any]], llm: LLM, s
                 if res is None:
                     D.update_job(conn, j["id"], status=D.STATUS_ERROR, processed_at=D.now_iso())
                     summary.errors += 1
+                    consecutive_failures += 1
+                    if consecutive_failures >= LLM_FAILURE_STOP:
+                        stop = True
+                        summary.notes = (f"LLM circuit breaker: {consecutive_failures} consecutive failed scores — "
+                                         "provider down? Remaining jobs stay 'new' for the next run.")
+                        logger.warning("%s — stopping the scoring loop", summary.notes)
                 else:
+                    consecutive_failures = 0
                     fields = dict(
                         company=res.get("company") or j.get("company"), fit_score=res["fit_score"],
                         fit_reasoning=res.get("one_liner", ""),
@@ -298,7 +319,10 @@ def generate_docs_for(settings: Settings, conn, job_ids: list[int], summary: Run
     gen = DocGenerator(settings, llm)
     done = 0
     for jid in job_ids:
-        _check_abort(conn)
+        if summary is not None:
+            # only the run consumes the abort flag: a standalone docs command (worker subprocess, CLI)
+            # sharing the abort flag would kill the docs and leave the run running
+            _check_abort(conn)
         job = D.get_job(conn, jid)
         if not job:
             continue
@@ -365,6 +389,9 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
     logger.info("=== autojob run %d starting%s ===", run_id, " (DRY RUN)" if dry_run else "")
     t0 = time.monotonic()
     started_at = D.now_iso()
+    orphans = D.sweep_orphaned_runs(conn, run_id)
+    if orphans:
+        logger.warning("swept %d orphaned 'running' run(s) to 'error'", orphans)
     try:
         # 0. retire old / dead shortlisted postings so the review queue only holds live ones
         if not only_sources:
@@ -392,7 +419,13 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
         # 3. prefilter
         D.set_pipeline_state(conn, current_phase="prefiltering")
         conn.commit()
-        candidates = prefilter(settings, conn, candidates, summary)
+        # one query for the whole run: deliberate dismissals per company feed BOTH the blocklist and
+        # the digest ranking (company_dismiss_count)
+        dismiss_counts = D.company_dismissal_counts(conn)
+        blk = settings.get("prefilter.company_blocklist", {}) or {}
+        blocked = ({c for c, n in dismiss_counts.items() if n >= int(blk.get("min_dismissals", 2))}
+                   if blk.get("enabled") else set())
+        candidates = prefilter(settings, conn, candidates, summary, blocked)
         # 4. scrape
         D.set_pipeline_state(conn, current_phase="scraping")
         conn.commit()
@@ -411,17 +444,24 @@ def run(settings: Settings, *, dry_run: bool = False, only_sources: list[str] | 
         D.finish_run(conn, run_id, "done", **summary.as_row())
         conn.commit()
         if not dry_run and not no_notify:
-            from autojob.notify import send_digest
+            from autojob.notify import digest_jobs, send_digest
             D.set_pipeline_state(conn, current_phase="notifying")
             conn.commit()
             run_row = dict(conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone())
             # Since the last run that FINISHED: shortlists from runs killed or aborted mid-scoring
-            # (systemd timeout, user abort) carry into the next digest instead of vanishing.
+            # (systemd timeout, user abort) carry into the next digest instead of vanishing. Bounding at
+            # finished_at (not started_at) keeps the previous run's jobs out of this digest — no double
+            # listing across consecutive digests, and queued_since now skips jobs you already acted on.
             prev = conn.execute(
-                "SELECT started_at FROM runs WHERE status = 'done' AND id < ? ORDER BY id DESC LIMIT 1",
+                "SELECT finished_at FROM runs WHERE status = 'done' AND id < ? ORDER BY id DESC LIMIT 1",
                 (run_id,),
             ).fetchone()
-            send_digest(settings, run_row, D.queued_since(conn, prev["started_at"] if prev else started_at))
+            digest = digest_jobs(D.queued_since(conn, prev["finished_at"] if prev else started_at),
+                                 settings.get("digest_ranking", {}) or {}, dismiss_counts)
+            exp = settings.get("expiry", {}) or {}
+            expiring = len(D.stale_by_age(conn, int(exp.get("posted_max_days", 30)) - 3,
+                                          int(exp.get("fetched_max_days", 45)) - 3))
+            send_digest(settings, run_row, digest, expiring_soon=expiring)
         D.set_pipeline_state(conn, status="idle", current_phase="done")
     except Aborted:
         summary.status = "aborted"

@@ -16,6 +16,7 @@ def test_age_rules(tmp_path):
     p = tmp_path / "e.db"
     D.init_db(p)
     with D.db(p) as conn:
+        clock = datetime(2026, 9, 2, tzinfo=UTC)   # fixed clock — the suite must not depend on wall time
         old_posted = _seed(conn, url="https://x/1", posted_at="2026-06-01")
         fresh_posted = _seed(conn, url="https://x/2", posted_at="2026-08-30")
         no_date = _seed(conn, url="https://x/3")
@@ -24,9 +25,9 @@ def test_age_rules(tmp_path):
         conn.execute("UPDATE jobs SET fetched_at = '2026-06-15T00:00:00+00:00' WHERE id = ?", (no_date,))
         acted = _seed(conn, url="https://x/4", posted_at="2026-05-01")
         D.update_job(conn, acted, status=D.STATUS_DOCS, user_action="applied")
-        stale = D.stale_by_age(conn, 30, 45, today=datetime(2026, 9, 2, tzinfo=UTC))
+        stale = D.stale_by_age(conn, 30, 45, today=clock)
         assert {i for i, _ in stale} == {old_posted, no_date}   # acted-on jobs are never expired
-        res = expire(conn, posted_max_days=30, fetched_max_days=45, link_checks=0)
+        res = expire(conn, posted_max_days=30, fetched_max_days=45, link_checks=0, today=clock)
         assert set(res["ids"]) == {old_posted, no_date}
         assert D.get_job(conn, old_posted)["status"] == "expired"
         assert D.get_job(conn, old_posted)["skip_reason"].startswith("expired: posted 2026-06-01")

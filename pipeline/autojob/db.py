@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from autojob.models import RawJob
-from autojob.normalize import fingerprint
+from autojob.normalize import company_key, fingerprint
 from autojob.settings import DB_PATH
 
 logger = logging.getLogger("autojob")
@@ -45,7 +45,7 @@ JOB_COLUMNS = {
     "fingerprint", "fit_score", "fit_reasoning", "strengths", "gaps", "skip_reason",
     "prefilter_reason", "status", "fetched_at", "processed_at", "scored_at", "scorer_model",
     "low_confidence", "description_length", "output_folder", "docs_generated_at",
-    "user_action", "user_action_at", "run_id", "link_checked_at", "score_facts",
+    "user_action", "user_action_at", "run_id", "link_checked_at", "score_facts", "dismiss_reason",
 }
 
 
@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     docs_generated_at TEXT,
     user_action TEXT,
     user_action_at TEXT,
+    dismiss_reason TEXT,
     run_id INTEGER,
     link_checked_at TEXT,
     score_facts TEXT
@@ -239,6 +240,9 @@ def init_db(path: Path | None = None) -> None:
         # scorer v2: extracted facts + score breakdown (JSON), so a score can always be explained
         if "score_facts" not in _columns(conn, "jobs"):
             conn.execute("ALTER TABLE jobs ADD COLUMN score_facts TEXT")
+        # 2026-10-06: why a job was dismissed (dashboard writes it; additive, NULL default)
+        if "dismiss_reason" not in _columns(conn, "jobs"):
+            conn.execute("ALTER TABLE jobs ADD COLUMN dismiss_reason TEXT")
         if "expired" not in _columns(conn, "runs"):
             conn.execute("ALTER TABLE runs ADD COLUMN expired INTEGER DEFAULT 0")
         if 0 < version < 3:
@@ -382,15 +386,32 @@ def set_user_action(conn: sqlite3.Connection, job_id: int, action: str) -> None:
 
 def queued_since(conn: sqlite3.Connection, since_iso: str) -> list[dict[str, Any]]:
     """Jobs shortlisted by scoring that happened after ``since_iso`` — including carry-over jobs
-    fetched in an earlier run, which a ``run_id`` filter would miss."""
+    fetched in an earlier run, which a ``run_id`` filter would miss. Only jobs you have not acted
+    on yet: the digest must not re-show dismissed/applied rows."""
     return [
         dict(r)
         for r in conn.execute(
             "SELECT * FROM jobs WHERE scored_at >= ? AND status IN ('queued','docs_generated') "
-            "ORDER BY fit_score DESC, id ASC",
+            "AND user_action IS NULL ORDER BY fit_score DESC, id ASC",
             (since_iso,),
         )
     ]
+
+
+def company_dismissal_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Deliberate dismissals per company key: ``dismissed`` at fit_score >= 7 — the only bulk wipe in
+    history was 301 score-6 rows, so this excludes it. Companies are keyed like fingerprints
+    (normalize.company_key). One query per run; the prefilter blocklist and the digest ranking
+    both read this dict."""
+    counts: dict[str, int] = {}
+    for r in conn.execute(
+        "SELECT company, COUNT(*) c FROM jobs "
+        "WHERE user_action = 'dismissed' AND fit_score >= 7 AND company IS NOT NULL GROUP BY company"
+    ):
+        key = company_key(r["company"])
+        if key and key not in ("unknown", "confidential", "not specified"):
+            counts[key] = counts.get(key, 0) + r["c"]
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +497,18 @@ def start_run(conn: sqlite3.Connection, dry_run: bool) -> int:
     return int(cur.lastrowid)
 
 
+def sweep_orphaned_runs(conn: sqlite3.Connection, keep_run_id: int) -> int:
+    """Runs still status='running' that are not this one were left behind by a killed process (the run
+    lock guarantees no other run is actually live) — close them as error so history and stats stay
+    honest. Two were stuck since 09-09/09-24. Returns how many were swept."""
+    cur = conn.execute(
+        "UPDATE runs SET status = 'error', finished_at = COALESCE(finished_at, ?), "
+        "notes = COALESCE(notes, '') || ? WHERE status = 'running' AND id != ?",
+        (now_iso(), "orphaned: process died before finishing (swept at next run start)", keep_run_id),
+    )
+    return int(cur.rowcount or 0)
+
+
 def finish_run(conn: sqlite3.Connection, run_id: int, status: str, **counts: Any) -> None:
     allowed = {"fetched", "new_jobs", "prefiltered", "scored", "queued", "skipped", "docs", "errors", "llm_calls", "notes",
                "expired"}
@@ -525,9 +558,13 @@ def claim_next_command(conn: sqlite3.Connection) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM commands WHERE status = 'pending' ORDER BY id LIMIT 1").fetchone()
     if not row:
         return None
-    conn.execute("UPDATE commands SET status = 'running', started_at = ? WHERE id = ?", (now_iso(), row["id"]))
+    # guarded UPDATE: if another poller claimed it between our SELECT and here, rowcount is 0
+    cur = conn.execute(
+        "UPDATE commands SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'",
+        (now_iso(), row["id"]),
+    )
     conn.commit()
-    return dict(row)
+    return dict(row) if cur.rowcount else None
 
 
 def finish_command(conn: sqlite3.Connection, command_id: int, status: str, result: str = "") -> None:

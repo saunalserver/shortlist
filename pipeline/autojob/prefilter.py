@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
+from autojob.normalize import company_key
+
 _US_STATES = {
     "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia", "ks", "ky", "la", "me",
     "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa",
@@ -91,8 +93,12 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
         return None
     padded = f" {loc} "
     canada = any(k in padded for k in CANADA_MARKERS)
+    # "Remote, CA" — boards' Canada remote_only pass writes exactly this — is remote-Canada (province-style
+    # CA), not California: 281 such rows were prefiltered as US, 0 ever scored. Only when "remote" is the
+    # place being qualified; "San Francisco, CA" and other real US cities still die in rule 2.
+    canada = canada or bool(re.fullmatch(r"remote[\s,\u2013-]+ca", loc))
     local = is_local(padded)
-    says_remote = remote is True or any(k in padded for k in REMOTE_MARKERS)
+    says_remote = bool(remote) or any(k in padded for k in REMOTE_MARKERS)   # SQLite hands us int 1, not True
     global_ok = any(k in padded for k in GLOBAL_MARKERS)
 
     # 1. Another Canadian city, on-site (no remote wording) → drop, unless the posting also names our area.
@@ -129,16 +135,27 @@ def location_reason(location: str, loc_cfg: dict[str, Any], remote: bool | None 
     return None
 
 
-def prefilter_reason(job: dict[str, Any], cfg: dict[str, Any]) -> str | None:
+def prefilter_reason(job: dict[str, Any], cfg: dict[str, Any],
+                     company_blocklist: set[str] | None = None) -> str | None:
     """Return why a job should be dropped without scoring, or None if it should be scored."""
     title = (job.get("title") or "").strip()
     if len(title) < 4:
         return "title: empty"
 
+    if company_blocklist and company_key(job.get("company")) in company_blocklist:
+        return "company_blocklist"
+
     lower_title = title.lower()
     protected = any(p.lower() in lower_title for p in cfg.get("title_allow_phrases", []) or [])
     if not protected:
-        word = _has_word(title, tuple(cfg.get("title_exclude_words", []) or []))
+        exclude = tuple(cfg.get("title_exclude_words", []) or [])
+        # Supply-chain carve-out: planner/buyer/scheduler are excluded words, but paired with a
+        # supply-chain function word (search.yaml title_sc_*) they are the 09-06 target family —
+        # only those words stop being exclusions; senior/director/contract… still kill.
+        sc_words = {w.lower() for w in cfg.get("title_sc_words", []) or []}
+        if sc_words and _has_word(title, tuple(cfg.get("title_sc_markers", []) or [])):
+            exclude = tuple(w for w in exclude if w.lower() not in sc_words)
+        word = _has_word(title, exclude)
         if word:
             return f"title: {word}"
         for phrase in cfg.get("title_exclude_phrases", []) or []:
