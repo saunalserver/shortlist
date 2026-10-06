@@ -17,7 +17,8 @@ export type ApplicationSource =
   | 'referral'
   | 'cold_outreach'
   | 'recruiter'
-  | 'other';
+  | 'other'
+  | (string & {}); // pipeline source slugs (wttj, ats_companies, …) flow through Apply
 
 export interface Application {
   id: string;

@@ -48,6 +48,26 @@ export const SOURCES: ApplicationSource[] = [
   'other',
 ];
 
+/** One-click status moves on the tracker table. */
+export const QUICK_STATUSES: ApplicationStatus[] = [
+  'screening',
+  'interview',
+  'offer',
+  'rejected',
+  'ghosted',
+];
+
+/** Optional reasons captured with every dismiss (jobs.dismiss_reason). Order = number keys 1-7. */
+export const DISMISS_REASONS: { slug: string; label: string }[] = [
+  { slug: 'role-family', label: 'role family' },
+  { slug: 'seniority', label: 'seniority' },
+  { slug: 'phone-field', label: 'phone / field' },
+  { slug: 'commute-onsite', label: 'commute / onsite' },
+  { slug: 'employer-type', label: 'employer type' },
+  { slug: 'bad-data', label: 'bad data' },
+  { slug: 'stale', label: 'stale' },
+];
+
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   bookmarked: 'Bookmarked',
   applied: 'Applied',
@@ -61,7 +81,7 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   ghosted: 'Ghosted',
 };
 
-export const SOURCE_LABELS: Record<ApplicationSource, string> = {
+export const SOURCE_LABELS: Partial<Record<ApplicationSource, string>> = {
   linkedin: 'LinkedIn',
   indeed: 'Indeed',
   wellfound: 'Wellfound',
@@ -70,6 +90,9 @@ export const SOURCE_LABELS: Record<ApplicationSource, string> = {
   recruiter: 'Recruiter',
   other: 'Other',
 };
+
+/** Known sources get their label; pipeline slugs pass through unchanged. */
+export const sourceLabel = (s: string | null | undefined): string => (s ? SOURCE_LABELS[s] ?? s : '-');
 
 export const COMPANY_SIZES = [
   '1-10',

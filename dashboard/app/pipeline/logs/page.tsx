@@ -23,7 +23,16 @@ export default function PipelineLogsPage() {
     setLoading(false);
   }, [lineCount]);
 
-  useEffect(() => { load(); }, [load]);
+  // initial fetch (the rule below dislikes setState reached synchronously from the effect body)
+  useEffect(() => {
+    let alive = true;
+    fetchAutojobLogs(lineCount).then((ls) => {
+      if (!alive) return;
+      setLines(ls);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [lineCount]);
   useEffect(() => {
     if (!autoRefresh) return;
     const t = setInterval(load, 4000);

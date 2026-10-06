@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { exportAllApplications } from '@/lib/db';
-import { STATUS_LABELS, SOURCE_LABELS } from '@/lib/constants';
+import { STATUS_LABELS, sourceLabel } from '@/lib/constants';
 
 export async function GET() {
   const applications = exportAllApplications();
@@ -22,7 +22,7 @@ export async function GET() {
     app.company_name,
     app.role_title,
     STATUS_LABELS[app.status],
-    app.source ? SOURCE_LABELS[app.source] : '',
+    app.source ? sourceLabel(app.source) : '',
     app.date_applied || '',
     app.location || '',
     app.salary_info || '',

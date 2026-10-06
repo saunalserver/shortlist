@@ -1,10 +1,27 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { fetchAutojobJobs, fetchAutojobJob, promoteJobToTracker, dismissPipelineJob, fetchActionedJobIds, requestDocs } from '@/actions/autojob';
+import { fetchAutojobJobs, fetchAutojobJob, promoteJobToTracker, dismissPipelineJob, fetchActionedJobIds, requestDocs, fetchExpiringPendingCount } from '@/actions/autojob';
 import type { AutojobJob, AutojobJobFilters } from '@/lib/autojob-db';
+import { DISMISS_REASONS } from '@/lib/constants';
 
 const STATUSES = ['queued', 'docs_generated', 'expired', 'new', 'skipped', 'prefiltered', 'error'];
+
+/** score_facts is JSON or NULL (populated once scoring v2 lands); render only scalar entries, defensively. */
+function parseScoreFacts(val: string | null): [string, string][] | null {
+  if (!val) return null;
+  try {
+    const obj: unknown = JSON.parse(val);
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      return Object.entries(obj as Record<string, unknown>)
+        .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+        .map(([k, v]) => [k, String(v)] as [string, string]);
+    }
+  } catch {
+    // not valid JSON — nothing to show
+  }
+  return null;
+}
 
 /** "3 d" / "5 w" / "—" for a YYYY-MM-DD date. */
 function age(date: string | null): string {
@@ -51,13 +68,17 @@ export default function PipelineJobsPage() {
   const [actioning, setActioning] = useState(false);
   const [actionedIds, setActionedIds] = useState<Set<number>>(new Set());
   const [showActioned, setShowActioned] = useState(false);
+  const [showStale, setShowStale] = useState(false);
   const [sortBy, setSortBy] = useState<'fit_score' | 'posted_at' | 'scored_at'>('fit_score');
+  const [selectedIdx, setSelectedIdx] = useState(-1);
+  const [dismissArmed, setDismissArmed] = useState(false);
+  const [expiringSoon, setExpiringSoon] = useState(0);
 
   const pageSize = 25;
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async (): Promise<AutojobJob[]> => {
     setLoading(true);
-    const filters: AutojobJobFilters = { page, pageSize, hideActioned: !showActioned, sortBy, sortDir: 'desc' };
+    const filters: AutojobJobFilters = { page, pageSize, hideActioned: !showActioned, includeStale: showStale, sortBy, sortDir: 'desc' };
     if (search) filters.search = search;
     if (statusFilter) filters.status = statusFilter;
     if (scoreFilter) {
@@ -67,7 +88,8 @@ export default function PipelineJobsPage() {
     setJobs(result.jobs);
     setTotal(result.total);
     setLoading(false);
-  }, [page, search, statusFilter, scoreFilter, showActioned, sortBy]);
+    return result.jobs;
+  }, [page, search, statusFilter, scoreFilter, showActioned, showStale, sortBy]);
 
   const loadActioned = useCallback(async () => {
     const ids = await fetchActionedJobIds();
@@ -76,47 +98,147 @@ export default function PipelineJobsPage() {
 
   useEffect(() => { loadJobs(); loadActioned(); }, [loadJobs, loadActioned]);
 
-  const openJob = async (id: number) => {
+  useEffect(() => { fetchExpiringPendingCount().then(setExpiringSoon).catch(() => setExpiringSoon(0)); }, []);
+
+  const openJob = useCallback(async (id: number) => {
     setPanelLoading(true);
     setActionMsg('');
+    setDismissArmed(false);
     const job = await fetchAutojobJob(id);
     setSelectedJob(job);
     setPanelLoading(false);
-  };
+  }, []);
 
-  const handleApply = async () => {
-    if (!selectedJob) return;
-    setActioning(true);
-    const result = await promoteJobToTracker(selectedJob.id);
-    setActionMsg(result.message);
-    setActioning(false);
-    if (result.success) {
-      setActionedIds(prev => new Set(prev).add(selectedJob.id));
-      loadJobs();
+  /** After an action, jump to the next still-pending row and open it — the 5-click loop becomes one keypress. */
+  const openNextPending = useCallback(async (freshJobs: AutojobJob[], actedId: number) => {
+    for (let i = Math.max(selectedIdx, 0); i < freshJobs.length; i++) {
+      const job = freshJobs[i];
+      if (!job || job.id === actedId || job.user_action) continue;
+      setSelectedIdx(i);
+      await openJob(job.id);
+      return;
     }
-  };
+    setSelectedJob(null); // nothing pending left on this page
+  }, [selectedIdx, openJob]);
 
-  const handleDismiss = async () => {
-    if (!selectedJob) return;
+  const handleApply = useCallback(async () => {
+    if (!selectedJob || actioning) return;
     setActioning(true);
-    const result = await dismissPipelineJob(selectedJob.id);
-    setActionMsg(result.message);
-    setActioning(false);
-    if (result.success) {
-      setActionedIds(prev => new Set(prev).add(selectedJob.id));
-      loadJobs();
+    const actedId = selectedJob.id;
+    try {
+      const result = await promoteJobToTracker(actedId);
+      setActionMsg(result.message);
+      if (result.success) {
+        setActionedIds(prev => new Set(prev).add(actedId));
+        await openNextPending(await loadJobs(), actedId);
+      }
+    } catch (error: unknown) {
+      setActionMsg(`Apply failed: ${(error as Error).message}`);
+    } finally {
+      setActioning(false);
     }
-  };
+  }, [selectedJob, actioning, loadJobs, openNextPending]);
 
-  const handleDocs = async () => {
+  const handleDismiss = useCallback(async (reason: string | null = null) => {
+    if (!selectedJob || actioning) return;
+    setDismissArmed(false);
+    setActioning(true);
+    const actedId = selectedJob.id;
+    try {
+      const result = await dismissPipelineJob(actedId, reason);
+      setActionMsg(result.message);
+      if (result.success) {
+        setActionedIds(prev => new Set(prev).add(actedId));
+        await openNextPending(await loadJobs(), actedId);
+      }
+    } catch (error: unknown) {
+      setActionMsg(`Dismiss failed: ${(error as Error).message}`);
+    } finally {
+      setActioning(false);
+    }
+  }, [selectedJob, actioning, loadJobs, openNextPending]);
+
+  const handleDocs = useCallback(async () => {
     if (!selectedJob) return;
     setActioning(true);
-    const result = await requestDocs(selectedJob.id);
-    setActionMsg(result.message);
-    setActioning(false);
-  };
+    try {
+      const result = await requestDocs(selectedJob.id);
+      setActionMsg(result.message);
+    } catch (error: unknown) {
+      setActionMsg(`Request failed: ${(error as Error).message}`);
+    } finally {
+      setActioning(false);
+    }
+  }, [selectedJob]);
+
+  // Keyboard review: j/k or arrows move through the list, o/Enter opens, a applies, d dismisses
+  // (second d or Esc confirms without a reason), 1-7 pick a dismiss reason while the chip row is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (t && (t.tagName === 'BUTTON' || t.tagName === 'A') && (e.key === 'Enter' || e.key === ' ')) return; // native activation
+      if (dismissArmed) {
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= DISMISS_REASONS.length) {
+          e.preventDefault();
+          void handleDismiss(DISMISS_REASONS[n - 1].slug);
+          return;
+        }
+      }
+      const actionable = selectedJob && !actionedIds.has(selectedJob.id) && !selectedJob.user_action;
+      switch (e.key) {
+        case 'j':
+        case 'ArrowDown':
+          e.preventDefault();
+          setSelectedIdx(i => Math.min(i + 1, jobs.length - 1));
+          break;
+        case 'k':
+        case 'ArrowUp':
+          e.preventDefault();
+          setSelectedIdx(i => Math.max(i - 1, 0));
+          break;
+        case 'Enter':
+        case 'o': {
+          const job = jobs[Math.min(selectedIdx, jobs.length - 1)] ?? jobs[0];
+          if (job) {
+            e.preventDefault();
+            void openJob(job.id);
+          }
+          break;
+        }
+        case 'a':
+          if (actionable && !actioning) {
+            e.preventDefault();
+            void handleApply();
+          }
+          break;
+        case 'd':
+          if (dismissArmed) {
+            e.preventDefault();
+            void handleDismiss(null);
+          } else if (actionable && !actioning) {
+            e.preventDefault();
+            setDismissArmed(true);
+          }
+          break;
+        case 'Escape':
+          if (dismissArmed) {
+            e.preventDefault();
+            void handleDismiss(null); // reasons are optional — never block the dismiss
+          } else if (selectedJob) {
+            e.preventDefault();
+            setSelectedJob(null);
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [jobs, selectedIdx, selectedJob, actioning, actionedIds, dismissArmed, openJob, handleApply, handleDismiss]);
 
   const totalPages = Math.ceil(total / pageSize);
+  const scoreFacts = parseScoreFacts(selectedJob?.score_facts ?? null);
 
   return (
     <div className="flex h-full flex-col bg-[#060a12]">
@@ -126,12 +248,26 @@ export default function PipelineJobsPage() {
           <label className="flex items-center gap-2 text-xs text-[#5a6f8a] cursor-pointer">
             <input
               type="checkbox"
+              checked={showStale}
+              onChange={(e) => { setShowStale(e.target.checked); setPage(1); }}
+              className="accent-[#e8a317]"
+            />
+            Show stale (&gt;14d)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-[#5a6f8a] cursor-pointer">
+            <input
+              type="checkbox"
               checked={showActioned}
               onChange={(e) => { setShowActioned(e.target.checked); setPage(1); }}
               className="accent-[#e8a317]"
             />
             Show actioned
           </label>
+          {expiringSoon > 0 && (
+            <span className="text-xs text-orange-400" title="Queued, unreviewed, and within 3 days of the 30d-posted / 45d-fetched expiry limits">
+              ⏳ {expiringSoon} pending job{expiringSoon !== 1 ? 's' : ''} retire within 3 days
+            </span>
+          )}
           <span className="text-sm text-[#5a6f8a]">{total} {showActioned ? 'total' : 'pending'}</span>
         </div>
       </header>
@@ -196,13 +332,14 @@ export default function PipelineJobsPage() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => {
+              {jobs.map((job, index) => {
                 const isActioned = actionedIds.has(job.id);
                 return (
                   <tr
                     key={job.id}
-                    onClick={() => openJob(job.id)}
+                    onClick={() => { setSelectedIdx(index); openJob(job.id); }}
                     className={`border-b border-[#1a2744] cursor-pointer transition-colors ${
+                      selectedIdx === index ? 'bg-[#111b2e]' :
                       isActioned
                         ? 'opacity-40 hover:opacity-70'
                         : 'hover:bg-[#111b2e]'
@@ -316,6 +453,17 @@ export default function PipelineJobsPage() {
                   {selectedJob.source && <span>via {selectedJob.source}</span>}
                   {selectedJob.low_confidence ? <span className="text-orange-400">low confidence (no full description)</span> : null}
                 </div>
+
+                {/* Score facts (v2 scorer breakdown; JSON or NULL) */}
+                {scoreFacts && scoreFacts.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {scoreFacts.map(([k, v]) => (
+                      <span key={k} className="px-2 py-0.5 rounded border border-[#1a2744] bg-[#111b2e] text-xs text-[#5a6f8a]">
+                        <span className="text-[#d4dce8]">{k}</span>: {v}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* URL */}
                 {selectedJob.url && (
@@ -437,16 +585,33 @@ export default function PipelineJobsPage() {
                       {actioning ? 'Applying...' : 'Apply — promote to tracker'}
                     </button>
                     <button
-                      onClick={handleDismiss}
+                      onClick={() => (dismissArmed ? handleDismiss(null) : setDismissArmed(true))}
                       disabled={actioning}
                       className="w-full px-4 py-2 text-sm rounded bg-[#111b2e] text-[#5a6f8a] border border-[#1a2744] hover:bg-[#1a2744] hover:text-[#d4dce8] disabled:opacity-50 transition-colors"
                     >
-                      Dismiss — not a fit
+                      {actioning ? 'Dismissing...' : dismissArmed ? 'Dismiss — no reason' : 'Dismiss — not a fit'}
                     </button>
+                    {dismissArmed && !actioning && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {DISMISS_REASONS.map((r, i) => (
+                          <button
+                            key={r.slug}
+                            onClick={() => handleDismiss(r.slug)}
+                            title={`Key ${i + 1}`}
+                            className="px-2 py-1 rounded border border-[#1a2744] bg-[#111b2e] text-xs text-[#d4dce8] hover:bg-[#1a2744] hover:text-[#e8a317] transition-colors"
+                          >
+                            <span className="text-[#5a6f8a] font-mono mr-1">{i + 1}</span>{r.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-[#5a6f8a]">
+                      keys: j/k move · o/Enter open · a apply · d dismiss (again or Esc = no reason) · 1–7 reason · Esc close
+                    </p>
                   </div>
                 ) : (
                   <div className="pt-3 border-t border-[#1a2744]">
-                    <p className="text-xs text-[#5a6f8a]">You marked this as <span className="text-[#d4dce8]">{selectedJob.user_action || 'actioned'}</span>{selectedJob.user_action_at ? ` on ${new Date(selectedJob.user_action_at).toLocaleDateString()}` : ''}</p>
+                    <p className="text-xs text-[#5a6f8a]">You marked this as <span className="text-[#d4dce8]">{selectedJob.user_action || 'actioned'}</span>{selectedJob.user_action === 'dismissed' && selectedJob.dismiss_reason ? ` (${selectedJob.dismiss_reason})` : ''}{selectedJob.user_action_at ? ` on ${new Date(selectedJob.user_action_at).toLocaleDateString()}` : ''}</p>
                   </div>
                 )}
 

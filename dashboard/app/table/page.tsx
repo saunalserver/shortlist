@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Header } from '@/components/layout/header';
 import { ApplicationTable } from '@/components/applications/application-table';
 import { fetchApplications } from '@/actions/applications';
@@ -18,16 +18,15 @@ import { Search } from 'lucide-react';
 
 export default function TablePage() {
   const [applications, setApplications] = useState<Application[]>([]);
-  const [filteredApplications, setFilteredApplications] = useState<Application[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   useEffect(() => {
     fetchApplications().then(setApplications);
   }, []);
 
-  useEffect(() => {
+  const filteredApplications = useMemo(() => {
     let filtered = applications;
 
     if (statusFilter) {
@@ -47,7 +46,7 @@ export default function TablePage() {
       );
     }
 
-    setFilteredApplications(filtered);
+    return filtered;
   }, [applications, statusFilter, sourceFilter, searchQuery]);
 
   return (
@@ -102,7 +101,10 @@ export default function TablePage() {
         </p>
 
         {/* Table */}
-        <ApplicationTable applications={filteredApplications} />
+        <ApplicationTable
+          applications={filteredApplications}
+          onUpdated={(u) => setApplications(prev => prev.map(a => (a.id === u.id ? u : a)))}
+        />
       </div>
     </>
   );

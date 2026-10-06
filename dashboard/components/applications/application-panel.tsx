@@ -13,11 +13,10 @@ export function ApplicationPanel() {
   const router = useRouter();
   const { selectedApplicationId, isPanelOpen, closePanel } = useUIStore();
   const [application, setApplication] = useState<Application | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (selectedApplicationId && isPanelOpen) {
-      setIsLoading(true);
       fetchApplication(selectedApplicationId).then((app) => {
         setApplication(app);
         setIsLoading(false);

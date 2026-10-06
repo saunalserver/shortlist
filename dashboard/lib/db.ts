@@ -49,6 +49,8 @@ function getDb(): Database.Database {
 
   CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
   CREATE INDEX IF NOT EXISTS idx_applications_date ON applications(date_applied);
+  -- Keeps a posting from entering the tracker twice (Apply retry, double-click, two tabs).
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_posting_url ON applications(posting_url);
 
 
 `);

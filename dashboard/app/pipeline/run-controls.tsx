@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchPipelineState, triggerAutojobRun, abortPipeline } from '@/actions/autojob';
+import { fetchPipelineState, triggerAutojobRun, abortPipeline, fetchPendingCommands } from '@/actions/autojob';
 import type { PipelineState } from '@/lib/autojob-db';
 
 const PHASES: Record<string, string> = {
@@ -11,12 +11,31 @@ const PHASES: Record<string, string> = {
 
 export function RunControls({ initialState }: { initialState: PipelineState }) {
   const [state, setState] = useState<PipelineState>(initialState);
+  // Label is precomputed in the poll (Date.now during render is impure); refreshed every 4 s.
+  const [commands, setCommands] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const t = setInterval(async () => setState(await fetchPipelineState()), 4000);
-    return () => clearInterval(t);
+    let alive = true;
+    const poll = async () => {
+      if (!alive) return;
+      setState(await fetchPipelineState());
+      try {
+        // queued while the worker is down = otherwise a silent stall
+        setCommands((await fetchPendingCommands()).map(c => {
+          const name = `${c.command}${c.arg ? ` ${c.arg}` : ''}`;
+          if (c.status === 'running') return `${name} — worker executing`;
+          const mins = Math.max(0, Math.round((Date.now() - new Date(c.created_at).getTime()) / 60000));
+          return `${name} queued ${mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`}`;
+        }));
+      } catch {
+        setCommands([]);
+      }
+    };
+    void poll();
+    const t = setInterval(poll, 4000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   const act = async (fn: () => Promise<{ success: boolean; message: string }>) => {
@@ -37,6 +56,15 @@ export function RunControls({ initialState }: { initialState: PipelineState }) {
   return (
     <div className="flex items-center gap-3">
       {msg && <span className="text-xs text-[#e8a317]">{msg}</span>}
+      {commands.length > 0 && (
+        <span
+          className="flex items-center gap-1.5 text-xs text-[#e8a317]"
+          title={`Command${commands.length > 1 ? 's' : ''} waiting for autojob-worker.service — if this persists, the worker is down (systemctl --user status autojob-worker)`}
+        >
+          <span className="w-2 h-2 rounded-full bg-[#e8a317] animate-pulse" />
+          {commands.join(' · ')}
+        </span>
+      )}
       <span className="flex items-center gap-2 text-xs text-[#d4dce8]">
         <span className={`w-2 h-2 rounded-full ${state.running ? 'bg-[#e8a317] animate-pulse' : 'bg-[#22c55e]'}`} />
         {label}{progress}

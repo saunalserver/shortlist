@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "reminders": "tsx scripts/check-reminders.ts"
+    "reminders": "tsx scripts/check-reminders.ts",
+    "test": "tsx tests/db.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

@@ -4,10 +4,11 @@ import {
   getAutojobStats, getAutojobJobs, getAutojobJobById, getPipelineState, enqueueCommand, getPendingCommands, setAbortFlag,
   setUserAction, getActionedIds, getRecentRuns, getSourceHealth,
   type AutojobJobFilters, type AutojobJob, type AutojobStats, type AutojobJobListResult, type PipelineState,
-  type RunRow, type SourceHealth, getSerperCredits, type SerperCredits,
+  type RunRow, type SourceHealth, getSerperCredits, type SerperCredits, getExpiringPendingCount,
 } from '@/lib/autojob-db';
 import { readAutojobLogs, readSearchConfig } from '@/lib/autojob-config';
-import { createApplication } from '@/lib/db';
+import { createApplication, getOrCreateCompanyByName } from '@/lib/db';
+import { DISMISS_REASONS } from '@/lib/constants';
 
 export async function fetchAutojobStats(): Promise<AutojobStats> {
   return getAutojobStats();
@@ -53,6 +54,11 @@ export async function fetchPendingCommands() {
   return getPendingCommands();
 }
 
+/** Pending jobs that hit an expiry limit within days — surfaced as review pressure in the UI. */
+export async function fetchExpiringPendingCount(withinDays = 3): Promise<number> {
+  return getExpiringPendingCount(withinDays);
+}
+
 /** Ask the host-side worker to start a run (the dashboard container has no Python). */
 export async function triggerAutojobRun(dryRun: boolean = false): Promise<{ success: boolean; message: string }> {
   if (getPipelineState().running) return { success: false, message: 'Pipeline is already running' };
@@ -80,7 +86,12 @@ export async function requestDocs(jobId: number): Promise<{ success: boolean; me
 export async function promoteJobToTracker(jobId: number): Promise<{ success: boolean; message: string }> {
   const job = getAutojobJobById(jobId);
   if (!job) return { success: false, message: 'Job not found' };
+  // Server-side idempotency: two tabs / a retry must not produce two tracker rows.
+  if (job.user_action) return { success: false, message: `Already marked as ${job.user_action} — nothing done` };
+  // Mark the decision first: if the tracker write fails we roll it back, so a retry can't half-apply.
+  setUserAction(jobId, 'applied');
   try {
+    if (job.company) getOrCreateCompanyByName(job.company);
     const application = createApplication({
       company_name: job.company || 'Unknown',
       role_title: job.title || 'Untitled Role',
@@ -89,20 +100,21 @@ export async function promoteJobToTracker(jobId: number): Promise<{ success: boo
       status: 'applied',
       date_applied: new Date().toISOString().split('T')[0],
       notes: job.fit_reasoning ? `Autojob (score ${job.fit_score}/10). ${job.fit_reasoning}` : `Autojob (score ${job.fit_score}/10)`,
-      source: 'other',
+      source: job.source || 'other',
       tags: ['autojob', ...(job.source ? [job.source] : [])],
     });
-    setUserAction(jobId, 'applied');
     return { success: true, message: `Added to tracker as Applied: ${application.role_title}` };
   } catch (error: unknown) {
+    setUserAction(jobId, null); // undo the decision so the job stays actionable
     return { success: false, message: `Failed to create application: ${(error as Error).message}` };
   }
 }
 
-export async function dismissPipelineJob(jobId: number): Promise<{ success: boolean; message: string }> {
+export async function dismissPipelineJob(jobId: number, reason?: string | null): Promise<{ success: boolean; message: string }> {
+  const slug = reason && DISMISS_REASONS.some(r => r.slug === reason) ? reason : null;
   try {
-    setUserAction(jobId, 'dismissed');
-    return { success: true, message: 'Dismissed' };
+    setUserAction(jobId, 'dismissed', slug);
+    return { success: true, message: slug ? `Dismissed (${slug})` : 'Dismissed' };
   } catch (error: unknown) {
     return { success: false, message: `Failed: ${(error as Error).message}` };
   }

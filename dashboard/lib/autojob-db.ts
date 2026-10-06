@@ -4,6 +4,7 @@
  * your decisions (jobs.user_action) and commands for the worker (commands table).
  */
 import Database from 'better-sqlite3';
+import fs from 'fs';
 
 const AUTOJOB_DB_PATH = process.env.AUTOJOB_DB_PATH || '/app/autojob-source/data/autojob.db';
 
@@ -13,8 +14,18 @@ function getDb(): Database.Database {
   if (!_db) {
     _db = new Database(AUTOJOB_DB_PATH);
     _db.pragma('busy_timeout = 10000');
+    ensureDismissReasonColumn(_db);
   }
   return _db;
+}
+
+/** The pipeline adds jobs.dismiss_reason in its own init; this guard keeps the dashboard
+ *  working against a DB written by an older pipeline (additive, idempotent). */
+function ensureDismissReasonColumn(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+  if (!cols.some(c => c.name === 'dismiss_reason')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN dismiss_reason TEXT');
+  }
 }
 
 export interface AutojobJob {
@@ -43,10 +54,12 @@ export interface AutojobJob {
   processed_at: string | null;
   scored_at: string | null;
   scorer_model: string | null;
+  score_facts: string | null;
   output_folder: string | null;
   docs_generated_at: string | null;
   user_action: 'applied' | 'dismissed' | null;
   user_action_at: string | null;
+  dismiss_reason: string | null;
   run_id: number | null;
   link_checked_at: string | null;
 }
@@ -72,6 +85,8 @@ export interface AutojobJobFilters {
   minScore?: number;
   source?: string;
   hideActioned?: boolean;
+  /** Keep unreviewed jobs scored more than 14 days ago out of the default pending view. */
+  includeStale?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -159,9 +174,13 @@ export function getAutojobStats(): AutojobStats {
   }));
   const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
   const last7 = db.prepare('SELECT COUNT(*) as c FROM jobs WHERE fetched_at >= ?').get(weekAgo) as { c: number };
+  // Unreviewed jobs older than this drop out of the default view: nothing older than ~6 days
+  // has ever been applied (review 2026-10-06 report 06 §4.2), so they only wait to expire.
+  const staleCutoff = 14;
   const pending = db.prepare(
-    "SELECT COUNT(*) as c FROM jobs WHERE status IN ('queued','docs_generated') AND user_action IS NULL"
-  ).get() as { c: number };
+    `SELECT COUNT(*) as c FROM jobs WHERE status IN ('queued','docs_generated') AND user_action IS NULL
+       AND (scored_at IS NULL OR julianday('now') - julianday(scored_at) < ?)`
+  ).get(staleCutoff) as { c: number };
   const shortlisted7 = db.prepare(
     "SELECT COUNT(*) as c FROM jobs WHERE status IN ('queued','docs_generated','expired') AND scored_at >= ? AND fit_score >= 6"
   ).get(weekAgo) as { c: number };
@@ -187,7 +206,7 @@ const SORTABLE = new Set(['fetched_at', 'fit_score', 'title', 'company', 'status
 
 export function getAutojobJobs(filters: AutojobJobFilters = {}): AutojobJobListResult {
   const db = getDb();
-  const { status, search, minScore, source, hideActioned = true, page = 1, pageSize = 25, sortBy = 'fit_score', sortDir = 'desc' } = filters;
+  const { status, search, minScore, source, hideActioned = true, includeStale = false, page = 1, pageSize = 25, sortBy = 'fit_score', sortDir = 'desc' } = filters;
   const where: string[] = ['1=1'];
   const params: (string | number)[] = [];
   if (status === 'active') {
@@ -197,6 +216,12 @@ export function getAutojobJobs(filters: AutojobJobFilters = {}): AutojobJobListR
     params.push(status);
   }
   if (hideActioned) where.push('user_action IS NULL');
+  // Same 14-day rule as pendingReview: only for the default pending view, and only unless the
+  // user explicitly asks for the stale tail via the "Show stale" toggle.
+  if (status === 'active' && hideActioned && !includeStale) {
+    where.push("(scored_at IS NULL OR julianday('now') - julianday(scored_at) < ?)");
+    params.push(14);
+  }
   if (search) {
     where.push('(title LIKE ? OR company LIKE ? OR location LIKE ?)');
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
@@ -213,8 +238,9 @@ export function getAutojobJobs(filters: AutojobJobFilters = {}): AutojobJobListR
   const sortCol = SORTABLE.has(sortBy) ? sortBy : 'fit_score';
   const dir = sortDir === 'asc' ? 'ASC' : 'DESC';
   const total = (db.prepare(`SELECT COUNT(*) as c FROM jobs WHERE ${whereSql}`).get(...params) as { c: number }).c;
+  // low_confidence rows sort last regardless of the chosen sort: 0 applies from 41 reviewed (report 06 §1.2).
   const rows = db.prepare(
-    `SELECT * FROM jobs WHERE ${whereSql} ORDER BY ${sortCol} ${dir} NULLS LAST, fetched_at DESC LIMIT ? OFFSET ?`
+    `SELECT * FROM jobs WHERE ${whereSql} ORDER BY COALESCE(low_confidence, 0) ASC, ${sortCol} ${dir} NULLS LAST, fetched_at DESC LIMIT ? OFFSET ?`
   ).all(...params, pageSize, (page - 1) * pageSize) as Row[];
   return { jobs: rows.map(rowToJob), total, page, pageSize };
 }
@@ -229,8 +255,24 @@ export function getActionedIds(): Set<number> {
   return new Set(rows.map(r => r.id));
 }
 
-export function setUserAction(id: number, action: 'applied' | 'dismissed'): void {
-  getDb().prepare('UPDATE jobs SET user_action = ?, user_action_at = ? WHERE id = ?').run(action, new Date().toISOString(), id);
+export function setUserAction(id: number, action: 'applied' | 'dismissed' | null, dismissReason: string | null = null): void {
+  getDb().prepare('UPDATE jobs SET user_action = ?, user_action_at = ?, dismiss_reason = ? WHERE id = ?')
+    .run(action, action ? new Date().toISOString() : null, dismissReason, id);
+}
+
+/** Pending jobs that hit the expiry limits (30d posted / 45d fetched, matching expire.py) within `withinDays`.
+ *  These retire out of the queue unreviewed unless triaged first. */
+export function getExpiringPendingCount(withinDays = 3): number {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) as c FROM jobs
+    WHERE status IN ('queued','docs_generated') AND user_action IS NULL
+      AND (
+        julianday('now') - julianday(substr(posted_at, 1, 10)) >= 30 - ?
+        OR (julianday(substr(posted_at, 1, 10)) IS NULL
+            AND julianday('now') - julianday(fetched_at) >= 45 - ?)
+      )
+  `).get(withinDays, withinDays) as { c: number };
+  return row.c;
 }
 
 export function getPipelineState(): PipelineState {
@@ -287,7 +329,6 @@ export function getSerperCredits(): SerperCredits {
   }
   let total = 2500;
   try {
-    const fs = require('fs');
     const env = fs.readFileSync(`${process.env.AUTOJOB_PROJECT_ROOT || '/app/autojob-source'}/.env`, 'utf8');
     const m = env.match(/^SERPER_CREDITS_TOTAL=(\d+)/m);
     if (m) total = Number(m[1]);

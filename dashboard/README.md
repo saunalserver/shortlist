@@ -24,7 +24,8 @@ Local dev: `npm install && npm run dev` (reads `../Autojob-search/data/autojob.d
 
 ## Reminders
 
-`scripts/check-reminders.ts` runs daily at 09:00 via the system unit `check-reminders.timer` (symlinked from `scripts/`).
+`scripts/check-reminders.ts` runs daily at 09:00 via the system-level unit `check-reminders.timer`
+(`/etc/systemd/system/check-reminders.{service,timer}` — copies of the `scripts/` files, not symlinks).
 It nudges on Telegram for applications stuck in *applied* ≥14 days or *screening* ≥7 days, once per application per 14 days,
 and stops nagging after 60 days (assume ghosted).
 
